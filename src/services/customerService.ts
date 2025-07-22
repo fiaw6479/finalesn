@@ -3,6 +3,8 @@ import { Database } from '../lib/supabase';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type CustomerInsert = Database['public']['Tables']['customers']['Insert'];
+type CustomerUpdate = Partial<Omit<CustomerInsert, 'restaurant_id' | 'id'>>;
+type Transaction = Database['public']['Tables']['transactions']['Row'];
 export class CustomerService {
   static async getCustomers(restaurantId: string): Promise<Customer[]> {
     try {

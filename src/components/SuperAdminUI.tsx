@@ -1,24 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { 
-  ChefHat, Users, Building, DollarSign, TrendingUp, Gift, 
-  AlertCircle, CheckCircle, RefreshCw, Trash2, Edit3, Plus,
-  Search, Filter, Settings, Database, Shield, Zap, MessageSquare,
-  Eye, EyeOff, Save, X, Crown, Award, Sparkles, BarChart3,
-  Clock, User, Mail, Phone, Calendar, Target, Percent,
-  Activity, Globe, Server, Wifi, HardDrive, Loader2, LogOut
+  Shield, Users, Building, MessageSquare, BarChart3, Settings,
+  Search, Filter, Eye, Edit3, Trash2, Plus, RefreshCw,
+  AlertCircle, CheckCircle, Crown, Award, ChefHat, X,
+  TrendingUp, DollarSign, Gift, Clock, User, Mail,
+  Phone, Calendar, MapPin, Star, Zap, Target, Loader2,
+  MoreVertical, Ban, CheckCircle2, XCircle, Lock,
+  Unlock, Database, Activity, Globe, Monitor
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-interface SystemStats {
-  totalRestaurants: number;
-  activeRestaurants: number;
-  totalCustomers: number;
-  totalTransactions: number;
-  totalPointsIssued: number;
-  totalRevenue: number;
-  totalRedemptions: number;
-}
 
 interface Restaurant {
   id: string;
@@ -28,13 +18,16 @@ interface Restaurant {
   settings: any;
   created_at: string;
   updated_at: string;
-  owner_email?: string;
-  owner_name?: string;
-  customer_count?: number;
-  total_revenue?: number;
-  points_issued?: number;
-  redemptions?: number;
-  last_activity?: string;
+  owner?: {
+    email: string;
+    user_metadata: any;
+  };
+  stats?: {
+    totalCustomers: number;
+    totalRewards: number;
+    totalRevenue: number;
+    totalPointsIssued: number;
+  };
 }
 
 interface Customer {
@@ -47,23 +40,13 @@ interface Customer {
   total_points: number;
   lifetime_points: number;
   current_tier: string;
-  total_spent: number;
   visit_count: number;
+  total_spent: number;
   created_at: string;
-  restaurant?: { name: string };
-}
-
-interface Transaction {
-  id: string;
-  restaurant_id: string;
-  customer_id: string;
-  type: string;
-  points: number;
-  amount_spent?: number;
-  description?: string;
-  created_at: string;
-  customer?: { first_name: string; last_name: string };
-  restaurant?: { name: string };
+  restaurant?: {
+    name: string;
+    slug: string;
+  };
 }
 
 interface SupportTicket {
@@ -71,144 +54,106 @@ interface SupportTicket {
   restaurant_id: string;
   title: string;
   description: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: string;
+  priority: string;
   category: string;
-  created_by_user_id: string;
   created_at: string;
-  restaurant?: { name: string };
+  restaurant?: {
+    name: string;
+    slug: string;
+  };
 }
 
-interface SupportMessage {
-  id: string;
-  ticket_id: string;
-  sender_type: 'restaurant_manager' | 'super_admin';
-  sender_id: string;
-  message: string;
-  created_at: string;
+interface SystemStats {
+  totalRestaurants: number;
+  totalCustomers: number;
+  totalRevenue: number;
+  totalPointsIssued: number;
+  activeTickets: number;
+  monthlyGrowth: {
+    restaurants: number;
+    customers: number;
+    revenue: number;
+  };
 }
 
 const SuperAdminUI: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'restaurants' | 'customers' | 'transactions' | 'support' | 'system'>('overview');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const navigate = useNavigate();
-
-  // Check super admin authentication
-  useEffect(() => {
-    const isAuthenticated = localStorage.getItem('super_admin_authenticated');
-    if (!isAuthenticated) {
-      navigate('/super-admin-login');
-      return;
-    }
-  }, [navigate]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'restaurants' | 'customers' | 'support' | 'analytics'>('overview');
   
   // Data states
-  const [systemStats, setSystemStats] = useState<SystemStats>({
-    totalRestaurants: 0,
-    activeRestaurants: 0,
-    totalCustomers: 0,
-    totalTransactions: 0,
-    totalPointsIssued: 0,
-    totalRevenue: 0,
-    totalRedemptions: 0
-  });
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
-  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
   
   // UI states
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRestaurant, setSelectedRestaurant] = useState<string>('all');
-  const [expandedRestaurant, setExpandedRestaurant] = useState<string | null>(null);
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [newMessage, setNewMessage] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
-  
-  // Modal states
-  const [showCreateRestaurant, setShowCreateRestaurant] = useState(false);
-  const [showEditRestaurant, setShowEditRestaurant] = useState(false);
-  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  
-  // Form states
-  const [restaurantForm, setRestaurantForm] = useState({
-    name: '',
-    ownerEmail: '',
-    ownerFirstName: '',
-    ownerLastName: '',
-    ownerPassword: ''
-  });
-  const [customerPointsAdjustment, setCustomerPointsAdjustment] = useState({
-    points: 0,
-    reason: ''
-  });
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [showRestaurantModal, setShowRestaurantModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAllData();
-    
-    // Set up real-time subscriptions for support
-    const ticketsSubscription = supabase
-      .channel('support_tickets_admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
-        fetchSupportTickets();
-      })
-      .subscribe();
-
-    const messagesSubscription = supabase
-      .channel('support_messages_admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, () => {
-        if (selectedTicket) {
-          fetchTicketMessages(selectedTicket.id);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      ticketsSubscription.unsubscribe();
-      messagesSubscription.unsubscribe();
-    };
+    checkAuthentication();
   }, []);
 
   useEffect(() => {
-    if (selectedTicket) {
-      fetchTicketMessages(selectedTicket.id);
+    if (isAuthenticated) {
+      fetchAllData();
     }
-  }, [selectedTicket]);
+  }, [isAuthenticated, activeTab]);
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
+  const checkAuthentication = () => {
+    const authenticated = localStorage.getItem('super_admin_authenticated');
+    const loginTime = localStorage.getItem('super_admin_login_time');
+    
+    if (authenticated && loginTime) {
+      const loginDate = new Date(loginTime);
+      const now = new Date();
+      const hoursSinceLogin = (now.getTime() - loginDate.getTime()) / (1000 * 60 * 60);
       
-      // Fetch system-wide data (not restaurant-specific)
-      const [restaurantsData, allCustomersData, allTransactionsData, supportData] = await Promise.all([
-        fetchRestaurants(),
-        fetchAllCustomers(),
-        fetchAllTransactions(),
-        fetchSupportTickets()
-      ]);
-
-      setRestaurants(restaurantsData);
-      setCustomers(allCustomersData);
-      setTransactions(allTransactionsData);
-      setSupportTickets(supportData);
-      
-      // Calculate system-wide stats
-      await fetchSystemStats();
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
+      // Session expires after 8 hours
+      if (hoursSinceLogin < 8) {
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('super_admin_authenticated');
+        localStorage.removeItem('super_admin_login_time');
+        window.location.href = '/super-admin-login';
+      }
+    } else {
+      window.location.href = '/super-admin-login';
     }
+    setLoading(false);
   };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
+  const fetchAllData = async () => {
     try {
-      await fetchAllData();
+      setRefreshing(true);
+      setError(null);
+
+      switch (activeTab) {
+        case 'overview':
+          await fetchSystemStats();
+          break;
+        case 'restaurants':
+          await fetchRestaurants();
+          break;
+        case 'customers':
+          await fetchCustomers();
+          break;
+        case 'support':
+          await fetchSupportTickets();
+          break;
+        case 'analytics':
+          await fetchSystemStats();
+          await fetchRestaurants();
+          break;
+      }
+    } catch (error: any) {
+      console.error('Error fetching data:', error);
+      setError(error.message || 'Failed to fetch data');
     } finally {
       setRefreshing(false);
     }
@@ -216,37 +161,62 @@ const SuperAdminUI: React.FC = () => {
 
   const fetchSystemStats = async () => {
     try {
-      // Get all restaurants
-      const { data: restaurantsData } = await supabase
+      // Get total restaurants
+      const { data: restaurantsData, error: restaurantsError } = await supabase
         .from('restaurants')
         .select('id, created_at');
 
-      // Get all customers
-      const { data: customersData } = await supabase
+      if (restaurantsError) throw restaurantsError;
+
+      // Get total customers across all restaurants
+      const { data: customersData, error: customersError } = await supabase
         .from('customers')
-        .select('total_spent');
+        .select('id, total_spent, created_at');
 
-      // Get all transactions
-      const { data: transactionsData } = await supabase
+      if (customersError) throw customersError;
+
+      // Get total points issued
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
-        .select('points, amount_spent, type');
+        .select('points')
+        .gt('points', 0);
 
-      const totalRestaurants = restaurantsData?.length || 0;
-      const activeRestaurants = totalRestaurants; // All restaurants are considered active
-      const totalCustomers = customersData?.length || 0;
-      const totalTransactions = transactionsData?.length || 0;
-      const totalPointsIssued = transactionsData?.filter(t => t.points > 0).reduce((sum, t) => sum + t.points, 0) || 0;
-      const totalRevenue = customersData?.reduce((sum, c) => sum + (c.total_spent || 0), 0) || 0;
-      const totalRedemptions = transactionsData?.filter(t => t.type === 'redemption').length || 0;
+      if (transactionsError) throw transactionsError;
+
+      // Get active support tickets
+      const { data: ticketsData, error: ticketsError } = await supabase
+        .from('support_tickets')
+        .select('id')
+        .in('status', ['open', 'in_progress']);
+
+      if (ticketsError) throw ticketsError;
+
+      // Calculate monthly growth
+      const now = new Date();
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      
+      const newRestaurantsThisMonth = restaurantsData?.filter(r => 
+        new Date(r.created_at) >= lastMonth
+      ).length || 0;
+      
+      const newCustomersThisMonth = customersData?.filter(c => 
+        new Date(c.created_at) >= lastMonth
+      ).length || 0;
+
+      const totalRevenue = customersData?.reduce((sum, c) => sum + c.total_spent, 0) || 0;
+      const totalPointsIssued = transactionsData?.reduce((sum, t) => sum + t.points, 0) || 0;
 
       setSystemStats({
-        totalRestaurants,
-        activeRestaurants,
-        totalCustomers,
-        totalTransactions,
-        totalPointsIssued,
+        totalRestaurants: restaurantsData?.length || 0,
+        totalCustomers: customersData?.length || 0,
         totalRevenue,
-        totalRedemptions
+        totalPointsIssued,
+        activeTickets: ticketsData?.length || 0,
+        monthlyGrowth: {
+          restaurants: newRestaurantsThisMonth,
+          customers: newCustomersThisMonth,
+          revenue: 0 // Would need more complex calculation
+        }
       });
     } catch (error) {
       console.error('Error fetching system stats:', error);
@@ -255,486 +225,200 @@ const SuperAdminUI: React.FC = () => {
 
   const fetchRestaurants = async () => {
     try {
-      console.log('🔍 Fetching all restaurants...');
-      
-      // Fetch restaurants without any joins to avoid schema cache errors
+      // Get restaurants with owner information and stats
       const { data: restaurantsData, error } = await supabase
         .from('restaurants')
-        .select('*')
+        .select(`
+          *,
+          owner:users!restaurants_owner_id_fkey(email, user_metadata)
+        `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Error fetching restaurants:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('✅ Restaurants fetched:', restaurantsData?.length || 0);
-      
-      // Fetch owner details separately for each restaurant
-      const restaurantsWithOwners = await Promise.all(
+      // Fetch stats for each restaurant
+      const restaurantsWithStats = await Promise.all(
         (restaurantsData || []).map(async (restaurant) => {
           try {
-            // Get owner details from auth.users
-            const { data: userData, error: userError } = await supabase.auth.admin.getUserById(restaurant.owner_id);
-            
-            if (userError) {
-              console.warn(`⚠️ Could not fetch owner for restaurant ${restaurant.id}:`, userError);
-              return {
-                ...restaurant,
-                owner_email: restaurant.owner_id || 'Unknown',
-                owner_name: 'Unknown User'
-              };
-            }
-
-            const user = userData.user;
-            const firstName = user?.user_metadata?.first_name || '';
-            const lastName = user?.user_metadata?.last_name || '';
-            const ownerName = `${firstName} ${lastName}`.trim() || user?.email?.split('@')[0] || 'Unknown';
-
             // Get customer count
-            const { data: customersData } = await supabase
+            const { data: customers } = await supabase
               .from('customers')
               .select('id, total_spent')
               .eq('restaurant_id', restaurant.id);
 
-            // Get transactions for points and redemptions
-            const { data: transactionsData } = await supabase
-              .from('transactions')
-              .select('points, type, created_at')
+            // Get rewards count
+            const { data: rewards } = await supabase
+              .from('rewards')
+              .select('id')
               .eq('restaurant_id', restaurant.id);
 
-            const customer_count = customersData?.length || 0;
-            const total_revenue = customersData?.reduce((sum, c) => sum + (c.total_spent || 0), 0) || 0;
-            const points_issued = transactionsData?.filter(t => t.points > 0).reduce((sum, t) => sum + t.points, 0) || 0;
-            const redemptions = transactionsData?.filter(t => t.type === 'redemption').length || 0;
-            const last_activity = transactionsData?.[0]?.created_at || restaurant.created_at;
+            // Get points issued
+            const { data: transactions } = await supabase
+              .from('transactions')
+              .select('points')
+              .eq('restaurant_id', restaurant.id)
+              .gt('points', 0);
 
-            return {
-              ...restaurant,
-              owner_email: user?.email || 'Unknown',
-              owner_name: ownerName,
-              customer_count,
-              total_revenue,
-              points_issued,
-              redemptions,
-              last_activity
+            const stats = {
+              totalCustomers: customers?.length || 0,
+              totalRewards: rewards?.length || 0,
+              totalRevenue: customers?.reduce((sum, c) => sum + c.total_spent, 0) || 0,
+              totalPointsIssued: transactions?.reduce((sum, t) => sum + t.points, 0) || 0
             };
+
+            return { ...restaurant, stats };
           } catch (error) {
-            console.error(`Error fetching data for restaurant ${restaurant.id}:`, error);
+            console.error(`Error fetching stats for restaurant ${restaurant.id}:`, error);
             return {
               ...restaurant,
-              owner_email: 'Unknown',
-              owner_name: 'Unknown',
-              customer_count: 0,
-              total_revenue: 0,
-              points_issued: 0,
-              redemptions: 0,
-              last_activity: restaurant.created_at
+              stats: {
+                totalCustomers: 0,
+                totalRewards: 0,
+                totalRevenue: 0,
+                totalPointsIssued: 0
+              }
             };
           }
         })
       );
 
-      return restaurantsWithOwners;
-    } catch (error: any) {
-      console.error('❌ Error fetching restaurants:', error);
-      // Return empty array instead of throwing to prevent UI crash
-      return [];
+      setRestaurants(restaurantsWithStats);
+    } catch (error) {
+      console.error('Error fetching restaurants:', error);
     }
   };
 
-  const fetchAllCustomers = async () => {
+  const fetchCustomers = async () => {
     try {
-      console.log('🔍 Fetching all customers across all restaurants...');
       const { data, error } = await supabase
         .from('customers')
         .select(`
           *,
-          restaurant:restaurants(name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      console.log('✅ All customers fetched:', data?.length || 0);
-      return data || [];
-    } catch (error: any) {
-      console.error('❌ Error fetching all customers:', error);
-      return [];
-    }
-  };
-
-  const fetchAllTransactions = async () => {
-    try {
-      console.log('🔍 Fetching all transactions across all restaurants...');
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          customer:customers(first_name, last_name),
-          restaurant:restaurants(name)
+          restaurant:restaurants(name, slug)
         `)
         .order('created_at', { ascending: false })
         .limit(100);
 
       if (error) throw error;
-      console.log('✅ All transactions fetched:', data?.length || 0);
-      return data || [];
-    } catch (error: any) {
-      console.error('❌ Error fetching all transactions:', error);
-      return [];
+      setCustomers(data || []);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
     }
   };
 
   const fetchSupportTickets = async () => {
     try {
-      console.log('🔍 Fetching all support tickets...');
       const { data, error } = await supabase
         .from('support_tickets')
         .select(`
           *,
-          restaurant:restaurants(name)
+          restaurant:restaurants(name, slug)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      console.log('✅ Support tickets fetched:', data?.length || 0);
-      return data || [];
-    } catch (error: any) {
-      console.error('❌ Error fetching support tickets:', error);
-      return [];
-    }
-  };
-
-  const fetchTicketMessages = async (ticketId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('support_messages')
-        .select('*')
-        .eq('ticket_id', ticketId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setSupportMessages(data || []);
+      setSupportTickets(data || []);
     } catch (error) {
-      console.error('Error fetching ticket messages:', error);
-    }
-  };
-
-  const handleCreateRestaurant = async () => {
-    try {
-      setLoading(true);
-      
-      console.log('🏗️ Creating new restaurant...');
-
-      // Create user account
-      const { data: userData, error: userError } = await supabase.auth.admin.createUser({
-        email: restaurantForm.ownerEmail,
-        password: restaurantForm.ownerPassword,
-        email_confirm: true,
-        user_metadata: {
-          first_name: restaurantForm.ownerFirstName,
-          last_name: restaurantForm.ownerLastName,
-          restaurant_name: restaurantForm.name
-        }
-      });
-
-      if (userError) throw userError;
-
-      // Create restaurant
-      console.log('🏪 Creating restaurant record...');
-      const slug = `${restaurantForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
-      
-      const { data: restaurantData, error: restaurantError } = await supabase
-        .from('restaurants')
-        .insert({
-          name: restaurantForm.name,
-          owner_id: userData.user.id,
-          slug: slug,
-          settings: {
-            pointValueAED: 0.05,
-            blanketMode: {
-              enabled: true,
-              type: 'manual',
-              manualSettings: { pointsPerAED: 0.1 }
-            },
-            tierMultipliers: {
-              bronze: 1.0,
-              silver: 1.25,
-              gold: 1.5,
-              platinum: 2.0
-            }
-          }
-        })
-        .select()
-        .single();
-
-      if (restaurantError) throw restaurantError;
-
-      // Create sample rewards
-      console.log('🎁 Creating sample rewards...');
-      const sampleRewards = [
-        { name: 'Free Appetizer', description: 'Choose any appetizer from our menu', points_required: 100, category: 'food', min_tier: 'bronze' },
-        { name: 'Free Dessert', description: 'Complimentary dessert of your choice', points_required: 150, category: 'food', min_tier: 'bronze' },
-        { name: 'Free Drink', description: 'Any beverage from our drink menu', points_required: 75, category: 'beverage', min_tier: 'bronze' }
-      ];
-
-      await supabase
-        .from('rewards')
-        .insert(
-          sampleRewards.map(reward => ({
-            ...reward,
-            restaurant_id: restaurantData.id
-          }))
-        );
-
-      console.log('✅ Restaurant created successfully');
-      setShowCreateRestaurant(false);
-      setRestaurantForm({ name: '', ownerEmail: '', ownerFirstName: '', ownerLastName: '', ownerPassword: '' });
-      await fetchAllData();
-    } catch (error: any) {
-      console.error('Error creating restaurant:', error);
-      alert(error.message || 'Failed to create restaurant');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateRestaurant = async () => {
-    if (!editingRestaurant) return;
-
-    try {
-      setLoading(true);
-
-      const { error } = await supabase
-        .from('restaurants')
-        .update({
-          name: restaurantForm.name,
-          slug: restaurantForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        })
-        .eq('id', editingRestaurant.id);
-
-      if (error) throw error;
-
-      setShowEditRestaurant(false);
-      setEditingRestaurant(null);
-      setRestaurantForm({ name: '', ownerEmail: '', ownerFirstName: '', ownerLastName: '', ownerPassword: '' });
-      await fetchAllData();
-    } catch (error: any) {
-      console.error('Error updating restaurant:', error);
-      alert(error.message || 'Failed to update restaurant');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteRestaurant = async (restaurantId: string) => {
-    if (!confirm('Are you sure you want to delete this restaurant? This will delete ALL associated data including customers, transactions, and rewards. This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      console.log('🗑️ Deleting restaurant:', restaurantId);
-
-      // Delete in proper order to handle foreign key constraints
-      await supabase.from('support_messages').delete().eq('ticket_id', 'in', 
-        `(SELECT id FROM support_tickets WHERE restaurant_id = '${restaurantId}')`);
-      await supabase.from('support_tickets').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('reward_redemptions').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('transactions').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('rewards').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('customers').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('menu_items').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('branches').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('restaurants').delete().eq('id', restaurantId);
-
-      await fetchAllData();
-      console.log('✅ Restaurant deleted successfully');
-    } catch (error: any) {
-      console.error('❌ Error deleting restaurant:', error);
-      alert(error.message || 'Failed to delete restaurant');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetRestaurantData = async (restaurantId: string) => {
-    if (!confirm('Are you sure you want to reset all data for this restaurant? This will delete all customers, transactions, and redemptions but keep the restaurant and rewards.')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      console.log('🔄 Resetting restaurant data:', restaurantId);
-
-      // Delete customer-related data in proper order
-      await supabase.from('support_messages').delete().eq('ticket_id', 'in', 
-        `(SELECT id FROM support_tickets WHERE restaurant_id = '${restaurantId}')`);
-      await supabase.from('support_tickets').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('reward_redemptions').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('transactions').delete().eq('restaurant_id', restaurantId);
-      await supabase.from('customers').delete().eq('restaurant_id', restaurantId);
-
-      // Reset reward redemption counts
-      await supabase
-        .from('rewards')
-        .update({ total_redeemed: 0 })
-        .eq('restaurant_id', restaurantId);
-
-      await fetchAllData();
-      console.log('✅ Restaurant data reset successfully');
-    } catch (error: any) {
-      console.error('❌ Error resetting restaurant data:', error);
-      alert(error.message || 'Failed to reset restaurant data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSystemWideReset = async () => {
-    if (!confirm('Are you sure you want to reset ALL data across the entire system? This will delete all customers, transactions, and redemptions for ALL restaurants. This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      console.log('🚨 Performing system-wide reset...');
-
-      // Delete all data in proper order
-      await supabase.from('support_messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('support_tickets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('reward_redemptions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('customers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      // Reset all reward redemption counts
-      await supabase
-        .from('rewards')
-        .update({ total_redeemed: 0 })
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      await fetchAllData();
-      console.log('✅ System-wide reset completed');
-    } catch (error: any) {
-      console.error('❌ Error resetting system data:', error);
-      alert(error.message || 'Failed to reset system data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAdjustCustomerPoints = async () => {
-    if (!selectedCustomer) return;
-
-    try {
-      setLoading(true);
-
-      const { error } = await supabase.rpc('process_point_transaction', {
-        p_restaurant_id: selectedCustomer.restaurant_id,
-        p_customer_id: selectedCustomer.id,
-        p_type: customerPointsAdjustment.points > 0 ? 'bonus' : 'redemption',
-        p_points: customerPointsAdjustment.points,
-        p_description: `Admin adjustment: ${customerPointsAdjustment.reason}`,
-        p_amount_spent: 0,
-        p_reward_id: null,
-        p_branch_id: null
-      });
-
-      if (error) throw error;
-
-      setShowCustomerModal(false);
-      setSelectedCustomer(null);
-      setCustomerPointsAdjustment({ points: 0, reason: '' });
-      await fetchAllCustomers();
-    } catch (error: any) {
-      console.error('Error adjusting customer points:', error);
-      alert(error.message || 'Failed to adjust customer points');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendSupportMessage = async () => {
-    if (!selectedTicket || !newMessage.trim()) return;
-
-    try {
-      setSendingMessage(true);
-
-      await supabase
-        .from('support_messages')
-        .insert({
-          ticket_id: selectedTicket.id,
-          sender_type: 'super_admin',
-          sender_id: 'super-admin',
-          message: newMessage
-        });
-
-      setNewMessage('');
-      await fetchTicketMessages(selectedTicket.id);
-    } catch (error) {
-      console.error('Error sending message:', error);
-    } finally {
-      setSendingMessage(false);
-    }
-  };
-
-  const handleUpdateTicketStatus = async (ticketId: string, status: string) => {
-    try {
-      await supabase
-        .from('support_tickets')
-        .update({ 
-          status,
-          assigned_to_admin: 'super-admin'
-        })
-        .eq('id', ticketId);
-
-      await fetchSupportTickets();
-      if (selectedTicket?.id === ticketId) {
-        setSelectedTicket({ ...selectedTicket, status: status as any });
-      }
-    } catch (error) {
-      console.error('Error updating ticket status:', error);
+      console.error('Error fetching support tickets:', error);
     }
   };
 
   const handleSignOut = () => {
     localStorage.removeItem('super_admin_authenticated');
     localStorage.removeItem('super_admin_login_time');
-    navigate('/super-admin-login');
+    window.location.href = '/super-admin-login';
   };
 
-  const filteredRestaurants = restaurants.filter(restaurant =>
-    restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    restaurant.owner_email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleDeleteRestaurant = async (restaurantId: string) => {
+    if (!confirm('Are you sure you want to delete this restaurant? This will delete ALL associated data including customers, rewards, and transactions. This action cannot be undone.')) {
+      return;
+    }
 
-  const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = customer.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         customer.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         customer.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRestaurant = selectedRestaurant === 'all' || customer.restaurant_id === selectedRestaurant;
-    return matchesSearch && matchesRestaurant;
-  });
+    try {
+      // Delete restaurant (cascade will handle related data)
+      const { error } = await supabase
+        .from('restaurants')
+        .delete()
+        .eq('id', restaurantId);
 
-  const filteredTransactions = transactions.filter(transaction => {
-    const matchesSearch = transaction.customer?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         transaction.customer?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         transaction.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRestaurant = selectedRestaurant === 'all' || transaction.restaurant_id === selectedRestaurant;
-    return matchesSearch && matchesRestaurant;
-  });
+      if (error) throw error;
 
-  const openTickets = supportTickets.filter(ticket => ticket.status === 'open').length;
+      await fetchRestaurants();
+      alert('Restaurant deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting restaurant:', error);
+      alert('Failed to delete restaurant: ' + error.message);
+    }
+  };
+
+  const handleUpdateTicketStatus = async (ticketId: string, status: string) => {
+    try {
+      const { error } = await supabase
+        .from('support_tickets')
+        .update({ status, assigned_to_admin: 'Super Admin' })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      await fetchSupportTickets();
+    } catch (error: any) {
+      console.error('Error updating ticket status:', error);
+      alert('Failed to update ticket status: ' + error.message);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open': return 'bg-blue-100 text-blue-800';
+      case 'in_progress': return 'bg-yellow-100 text-yellow-800';
+      case 'resolved': return 'bg-green-100 text-green-800';
+      case 'closed': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'bg-red-100 text-red-800';
+      case 'high': return 'bg-orange-100 text-orange-800';
+      case 'medium': return 'bg-yellow-100 text-yellow-800';
+      case 'low': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">Loading Super Admin Dashboard...</p>
+          <p className="text-gray-600">Loading Super Admin...</p>
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Will redirect to login
   }
 
   return (
@@ -742,60 +426,62 @@ const SuperAdminUI: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center">
-              <ChefHat className="w-7 h-7 text-white" />
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-700 rounded-xl flex items-center justify-center">
+              <Shield className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Super Admin Dashboard</h1>
-              <p className="text-sm text-gray-500">System-wide oversight and management</p>
+              <p className="text-sm text-gray-500">System-wide oversight and control</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button
-              onClick={handleRefresh}
+              onClick={fetchAllData}
               disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
+            
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900">Super Admin</p>
+                <p className="text-xs text-gray-500">System Administrator</p>
+              </div>
+              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-full flex items-center justify-center">
+                <Crown className="w-5 h-5 text-white" />
+              </div>
+            </div>
             
             <button
               onClick={handleSignOut}
-              className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+              className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
             >
-              <LogOut className="h-4 w-4" />
               Sign Out
             </button>
-            
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-800 rounded-lg">
-              <Globe className="w-4 h-4" />
-              <span className="text-sm font-medium">System Admin</span>
-            </div>
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
+      {/* Navigation Tabs */}
       <nav className="bg-white border-b border-gray-200">
         <div className="px-6">
           <div className="flex space-x-8">
             {[
-              { id: 'overview', label: 'Overview', icon: BarChart3 },
+              { id: 'overview', label: 'System Overview', icon: BarChart3 },
               { id: 'restaurants', label: 'Restaurants', icon: Building },
-              { id: 'customers', label: 'Customers', icon: Users },
-              { id: 'transactions', label: 'Transactions', icon: Activity },
-              { id: 'support', label: `Support ${openTickets > 0 ? `(${openTickets})` : ''}`, icon: MessageSquare },
-              { id: 'system', label: 'System', icon: Settings }
+              { id: 'customers', label: 'All Customers', icon: Users },
+              { id: 'support', label: 'Support Tickets', icon: MessageSquare },
+              { id: 'analytics', label: 'Analytics', icon: TrendingUp }
             ].map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-2 px-4 py-4 border-b-2 font-medium text-sm transition-colors ${
+                  className={`flex items-center gap-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.id
                       ? 'border-red-500 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -812,127 +498,122 @@ const SuperAdminUI: React.FC = () => {
 
       {/* Main Content */}
       <main className="p-6">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5" />
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="ml-auto text-red-500 hover:text-red-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* System Overview Tab */}
+        {activeTab === 'overview' && systemStats && (
           <div className="space-y-6">
-            {/* System Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Building className="w-6 h-6 text-blue-600" />
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">System Overview</h2>
+              <p className="text-gray-600">Complete overview of the TableLoyalty platform</p>
+            </div>
+
+            {/* System Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Building className="h-6 w-6 text-blue-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Restaurants</p>
                     <p className="text-2xl font-bold text-gray-900">{systemStats.totalRestaurants}</p>
                   </div>
                 </div>
+                <p className="text-xs text-green-600">+{systemStats.monthlyGrowth.restaurants} this month</p>
               </div>
 
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Users className="w-6 h-6 text-green-600" />
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                    <Users className="h-6 w-6 text-green-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Customers</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalCustomers}</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalCustomers.toLocaleString()}</p>
                   </div>
                 </div>
+                <p className="text-xs text-green-600">+{systemStats.monthlyGrowth.customers} this month</p>
               </div>
 
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <TrendingUp className="w-6 h-6 text-purple-600" />
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(systemStats.totalRevenue)}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">Across all restaurants</p>
+              </div>
+
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <Zap className="h-6 w-6 text-purple-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Points Issued</p>
                     <p className="text-2xl font-bold text-gray-900">{systemStats.totalPointsIssued.toLocaleString()}</p>
                   </div>
                 </div>
+                <p className="text-xs text-gray-500">Total loyalty points</p>
               </div>
 
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <DollarSign className="w-6 h-6 text-yellow-600" />
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                    <MessageSquare className="h-6 w-6 text-red-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Total Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalRevenue.toFixed(0)} AED</p>
+                    <p className="text-sm text-gray-600">Active Tickets</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.activeTickets}</p>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* System Health */}
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">System Health</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-900">Database</p>
-                    <p className="text-sm text-green-700">Connected</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-900">Auth Service</p>
-                    <p className="text-sm text-green-700">Operational</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-900">Point Engine</p>
-                    <p className="text-sm text-green-700">Running</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-900">Support System</p>
-                    <p className="text-sm text-green-700">Active</p>
-                  </div>
-                </div>
+                <p className="text-xs text-gray-500">Pending support</p>
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-              <div className="space-y-3">
-                {transactions.slice(0, 10).map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <Activity className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {transaction.customer?.first_name} {transaction.customer?.last_name}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {transaction.restaurant?.name} • {transaction.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-medium ${transaction.points > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {transaction.points > 0 ? '+' : ''}{transaction.points} pts
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(transaction.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
+            <div className="bg-white rounded-2xl p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">System Health</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-green-900">Database</p>
+                    <p className="text-sm text-green-700">Operational</p>
                   </div>
-                ))}
+                </div>
+                
+                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl">
+                  <Activity className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-green-900">API Services</p>
+                    <p className="text-sm text-green-700">All systems running</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl">
+                  <Globe className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-green-900">Platform Status</p>
+                    <p className="text-sm text-green-700">Fully operational</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -942,143 +623,116 @@ const SuperAdminUI: React.FC = () => {
         {activeTab === 'restaurants' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Restaurant Management</h2>
-              <button
-                onClick={() => setShowCreateRestaurant(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Create Restaurant
-              </button>
-            </div>
-
-            {/* Search */}
-            <div className="bg-white rounded-xl p-4 border border-gray-200">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search restaurants..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Restaurant Management</h2>
+                <p className="text-gray-600">Manage all restaurants on the platform</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search restaurants..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Restaurants List */}
-            <div className="space-y-4">
-              {filteredRestaurants.map((restaurant) => (
-                <div key={restaurant.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* Restaurants Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {restaurants
+                .filter(restaurant => 
+                  restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  restaurant.slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  restaurant.owner?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((restaurant) => (
+                <div key={restaurant.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-200">
                   <div className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Building className="w-6 h-6 text-blue-600" />
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-xl flex items-center justify-center">
+                          <ChefHat className="h-6 w-6 text-white" />
                         </div>
                         <div>
                           <h3 className="font-semibold text-gray-900">{restaurant.name}</h3>
-                          <p className="text-sm text-gray-600">
-                            Owner: {restaurant.owner_name} ({restaurant.owner_email})
-                          </p>
-                          <p className="text-xs text-gray-500">ID: {restaurant.id}</p>
+                          <p className="text-sm text-gray-600">/{restaurant.slug}</p>
+                          <p className="text-xs text-gray-500">{restaurant.owner?.email}</p>
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingRestaurant(restaurant);
-                            setRestaurantForm({ ...restaurantForm, name: restaurant.name });
-                            setShowEditRestaurant(true);
-                          }}
-                          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        
-                        <button
-                          onClick={() => handleDeleteRestaurant(restaurant.id)}
-                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        
-                        <button
-                          onClick={() => setExpandedRestaurant(
-                            expandedRestaurant === restaurant.id ? null : restaurant.id
-                          )}
-                          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          {expandedRestaurant === restaurant.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <div className="relative">
+                        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                          <MoreVertical className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
 
                     {/* Restaurant Stats */}
-                    <div className="grid grid-cols-4 gap-4 mt-4">
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">Customers</p>
-                        <p className="text-lg font-bold text-gray-900">{restaurant.customer_count}</p>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-blue-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users className="h-4 w-4 text-blue-600" />
+                          <span className="text-xs text-blue-600">Customers</span>
+                        </div>
+                        <p className="text-lg font-bold text-blue-900">{restaurant.stats?.totalCustomers || 0}</p>
                       </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">Revenue</p>
-                        <p className="text-lg font-bold text-gray-900">{restaurant.total_revenue?.toFixed(0)} AED</p>
+                      
+                      <div className="bg-green-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <DollarSign className="h-4 w-4 text-green-600" />
+                          <span className="text-xs text-green-600">Revenue</span>
+                        </div>
+                        <p className="text-lg font-bold text-green-900">{formatCurrency(restaurant.stats?.totalRevenue || 0)}</p>
                       </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">Points</p>
-                        <p className="text-lg font-bold text-gray-900">{restaurant.points_issued?.toLocaleString()}</p>
+                      
+                      <div className="bg-purple-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Gift className="h-4 w-4 text-purple-600" />
+                          <span className="text-xs text-purple-600">Rewards</span>
+                        </div>
+                        <p className="text-lg font-bold text-purple-900">{restaurant.stats?.totalRewards || 0}</p>
                       </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-600">Redemptions</p>
-                        <p className="text-lg font-bold text-gray-900">{restaurant.redemptions}</p>
+                      
+                      <div className="bg-yellow-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Zap className="h-4 w-4 text-yellow-600" />
+                          <span className="text-xs text-yellow-600">Points</span>
+                        </div>
+                        <p className="text-lg font-bold text-yellow-900">{restaurant.stats?.totalPointsIssued?.toLocaleString() || 0}</p>
                       </div>
                     </div>
 
-                    {/* Expanded Details */}
-                    {expandedRestaurant === restaurant.id && (
-                      <div className="mt-6 pt-6 border-t border-gray-200">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Loyalty Settings */}
-                          <div className="bg-blue-50 rounded-lg p-4">
-                            <h4 className="font-medium text-blue-900 mb-3">Loyalty Settings</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-blue-700">Point Value:</span>
-                                <span className="font-medium text-blue-900">
-                                  {restaurant.settings?.pointValueAED || 0.05} AED
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-blue-700">Blanket Mode:</span>
-                                <span className="font-medium text-blue-900">
-                                  {restaurant.settings?.blanketMode?.enabled ? 'Enabled' : 'Disabled'}
-                                </span>
-                              </div>
-                              {restaurant.settings?.blanketMode?.enabled && (
-                                <div className="flex justify-between">
-                                  <span className="text-blue-700">Mode Type:</span>
-                                  <span className="font-medium text-blue-900">
-                                    {restaurant.settings.blanketMode.type}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedRestaurant(restaurant);
+                          setShowRestaurantModal(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View Details
+                      </button>
+                      
+                      <button
+                        onClick={() => handleDeleteRestaurant(restaurant.id)}
+                        className="flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                          {/* Actions */}
-                          <div className="space-y-3">
-                            <button
-                              onClick={() => handleResetRestaurantData(restaurant.id)}
-                              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 transition-colors"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              Reset Restaurant Data
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    {/* Created Date */}
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-500">
+                        Created {formatDate(restaurant.created_at)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1090,177 +744,86 @@ const SuperAdminUI: React.FC = () => {
         {activeTab === 'customers' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Customer Management</h2>
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedRestaurant}
-                  onChange={(e) => setSelectedRestaurant(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                >
-                  <option value="all">All Restaurants</option>
-                  {restaurants.map((restaurant) => (
-                    <option key={restaurant.id} value={restaurant.id}>
-                      {restaurant.name}
-                    </option>
-                  ))}
-                </select>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Customer Management</h2>
+                <p className="text-gray-600">View all customers across all restaurants</p>
               </div>
-            </div>
-
-            {/* Search */}
-            <div className="bg-white rounded-xl p-4 border border-gray-200">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search customers..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
               </div>
             </div>
 
-            {/* Customers List */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* Customers Table */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Customer</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Restaurant</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Points</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Tier</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Points</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Spent</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Visits</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Joined</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredCustomers.map((customer) => (
+                    {customers
+                      .filter(customer => 
+                        customer.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        customer.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        customer.restaurant?.name.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((customer) => (
                       <tr key={customer.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {customer.first_name} {customer.last_name}
-                            </p>
-                            <p className="text-sm text-gray-600">{customer.email}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center text-white text-sm font-medium">
+                              {customer.first_name[0]}{customer.last_name[0]}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{customer.first_name} {customer.last_name}</p>
+                              <p className="text-sm text-gray-500">{customer.email}</p>
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-gray-900">{customer.restaurant?.name}</p>
+                          <p className="font-medium text-gray-900">{customer.restaurant?.name}</p>
+                          <p className="text-sm text-gray-500">/{customer.restaurant?.slug}</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">{customer.total_points}</p>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                            {customer.current_tier}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <p className="text-gray-900">{customer.total_spent.toFixed(0)} AED</p>
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => {
-                              setSelectedCustomer(customer);
-                              setShowCustomerModal(true);
-                            }}
-                            className="text-red-600 hover:text-red-800 font-medium text-sm"
-                          >
-                            Adjust Points
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Transactions Tab */}
-        {activeTab === 'transactions' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Transaction Monitoring</h2>
-              <select
-                value={selectedRestaurant}
-                onChange={(e) => setSelectedRestaurant(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-              >
-                <option value="all">All Restaurants</option>
-                {restaurants.map((restaurant) => (
-                  <option key={restaurant.id} value={restaurant.id}>
-                    {restaurant.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Search */}
-            <div className="bg-white rounded-xl p-4 border border-gray-200">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search transactions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Transactions List */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Customer</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Restaurant</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Type</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Points</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Amount</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredTransactions.map((transaction) => (
-                      <tr key={transaction.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">
-                            {transaction.customer?.first_name} {transaction.customer?.last_name}
-                          </p>
-                        </td>
-                        <td className="py-3 px-4">
-                          <p className="text-gray-900">{transaction.restaurant?.name}</p>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            transaction.type === 'purchase' ? 'bg-green-100 text-green-800' :
-                            transaction.type === 'redemption' ? 'bg-red-100 text-red-800' :
-                            'bg-blue-100 text-blue-800'
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                            customer.current_tier === 'gold' ? 'bg-yellow-100 text-yellow-800' :
+                            customer.current_tier === 'silver' ? 'bg-gray-100 text-gray-800' :
+                            'bg-orange-100 text-orange-800'
                           }`}>
-                            {transaction.type}
+                            {customer.current_tier === 'gold' ? <Crown className="h-3 w-3" /> :
+                             customer.current_tier === 'silver' ? <Award className="h-3 w-3" /> :
+                             <ChefHat className="h-3 w-3" />}
+                            {customer.current_tier.charAt(0).toUpperCase() + customer.current_tier.slice(1)}
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <p className={`font-medium ${transaction.points > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {transaction.points > 0 ? '+' : ''}{transaction.points}
-                          </p>
+                          <p className="font-medium text-gray-900">{customer.total_points.toLocaleString()}</p>
+                          <p className="text-sm text-gray-500">{customer.lifetime_points.toLocaleString()} lifetime</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-gray-900">
-                            {transaction.amount_spent ? `${transaction.amount_spent} AED` : '-'}
-                          </p>
+                          <p className="font-medium text-gray-900">{formatCurrency(customer.total_spent)}</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-gray-600">
-                            {new Date(transaction.created_at).toLocaleDateString()}
-                          </p>
+                          <p className="font-medium text-gray-900">{customer.visit_count}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-gray-500">{formatDate(customer.created_at)}</p>
                         </td>
                       </tr>
                     ))}
@@ -1273,192 +836,140 @@ const SuperAdminUI: React.FC = () => {
 
         {/* Support Tab */}
         {activeTab === 'support' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-300px)]">
-            {/* Tickets Sidebar */}
-            <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
-              <div className="p-4 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Support Tickets</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Support Tickets</h2>
+                <p className="text-gray-600">Manage support requests from all restaurants</p>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                {supportTickets.map((ticket) => (
-                  <button
-                    key={ticket.id}
-                    onClick={() => setSelectedTicket(ticket)}
-                    className={`w-full p-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
-                      selectedTicket?.id === ticket.id ? 'bg-red-50 border-r-2 border-red-500' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-medium text-gray-900 text-sm line-clamp-1">
-                        {ticket.title}
-                      </h4>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        ticket.status === 'open' ? 'bg-red-100 text-red-800' :
-                        ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                        ticket.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {ticket.status.replace('_', ' ')}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-600 line-clamp-2 mb-2">
-                      {ticket.description}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">
-                        {ticket.restaurant?.name}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {new Date(ticket.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search tickets..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
               </div>
             </div>
 
-            {/* Chat Area */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl flex flex-col">
-              {selectedTicket ? (
-                <>
-                  {/* Chat Header */}
-                  <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{selectedTicket.title}</h3>
-                        <p className="text-sm text-gray-600">{selectedTicket.restaurant?.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={selectedTicket.status}
-                          onChange={(e) => handleUpdateTicketStatus(selectedTicket.id, e.target.value)}
-                          className="px-3 py-1 border border-gray-200 rounded text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                        >
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="resolved">Resolved</option>
-                          <option value="closed">Closed</option>
-                        </select>
-                      </div>
+            {/* Support Tickets Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {supportTickets
+                .filter(ticket => 
+                  ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  ticket.restaurant?.name.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((ticket) => (
+                <div key={ticket.id} className="bg-white rounded-2xl border border-gray-200 p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 mb-1">{ticket.title}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{ticket.description}</p>
+                      <p className="text-xs text-gray-500">From: {ticket.restaurant?.name}</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(ticket.status)}`}>
+                        {ticket.status.replace('_', ' ')}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(ticket.priority)}`}>
+                        {ticket.priority}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {/* Initial ticket message */}
-                    <div className="flex justify-start">
-                      <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-gray-200 text-gray-900">
-                        <p className="text-sm">{selectedTicket.description}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(selectedTicket.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    {supportMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.sender_type === 'super_admin' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          message.sender_type === 'super_admin'
-                            ? 'bg-red-600 text-white'
-                            : 'bg-gray-200 text-gray-900'
-                        }`}>
-                          <p className="text-sm">{message.message}</p>
-                          <p className={`text-xs mt-1 ${
-                            message.sender_type === 'super_admin' ? 'text-red-200' : 'text-gray-500'
-                          }`}>
-                            {new Date(message.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Message Input */}
-                  <div className="p-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">{formatDate(ticket.created_at)}</p>
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !sendingMessage && handleSendSupportMessage()}
-                        placeholder="Type your response..."
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                      />
-                      <button
-                        onClick={handleSendSupportMessage}
-                        disabled={sendingMessage || !newMessage.trim()}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send'}
-                      </button>
+                      {ticket.status === 'open' && (
+                        <button
+                          onClick={() => handleUpdateTicketStatus(ticket.id, 'in_progress')}
+                          className="px-3 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-lg hover:bg-yellow-200 transition-colors"
+                        >
+                          Start Progress
+                        </button>
+                      )}
+                      {ticket.status === 'in_progress' && (
+                        <button
+                          onClick={() => handleUpdateTicketStatus(ticket.id, 'resolved')}
+                          className="px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors"
+                        >
+                          Mark Resolved
+                        </button>
+                      )}
+                      {ticket.status === 'resolved' && (
+                        <button
+                          onClick={() => handleUpdateTicketStatus(ticket.id, 'closed')}
+                          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                          Close Ticket
+                        </button>
+                      )}
                     </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center">
-                    <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Select a Ticket</h3>
-                    <p className="text-gray-500">Choose a support ticket to view the conversation</p>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         )}
 
-        {/* System Tab */}
-        {activeTab === 'system' && (
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && systemStats && (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-900">System Management</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Data Management */}
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Management</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    Refresh All Data
-                  </button>
-                  
-                  <button
-                    onClick={handleSystemWideReset}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Reset All Customer Data
-                  </button>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Platform Analytics</h2>
+              <p className="text-gray-600">Comprehensive analytics across all restaurants</p>
+            </div>
+
+            {/* Analytics Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Platform Growth */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Growth</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Total Restaurants</span>
+                    <span className="font-bold text-gray-900">{systemStats.totalRestaurants}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Total Customers</span>
+                    <span className="font-bold text-gray-900">{systemStats.totalCustomers.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Platform Revenue</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(systemStats.totalRevenue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Points Issued</span>
+                    <span className="font-bold text-gray-900">{systemStats.totalPointsIssued.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* System Info */}
-              <div className="bg-white rounded-xl p-6 border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">System Information</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Version:</span>
-                    <span className="font-medium text-gray-900">2.0.0</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Environment:</span>
-                    <span className="font-medium text-gray-900">Production</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Database:</span>
-                    <span className="font-medium text-green-600">Connected</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Last Backup:</span>
-                    <span className="font-medium text-gray-900">2 hours ago</span>
-                  </div>
+              {/* Top Performing Restaurants */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Restaurants</h3>
+                <div className="space-y-3">
+                  {restaurants
+                    .sort((a, b) => (b.stats?.totalRevenue || 0) - (a.stats?.totalRevenue || 0))
+                    .slice(0, 5)
+                    .map((restaurant, index) => (
+                    <div key={restaurant.id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-lg flex items-center justify-center text-white text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{restaurant.name}</p>
+                        <p className="text-sm text-gray-500">{formatCurrency(restaurant.stats?.totalRevenue || 0)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">{restaurant.stats?.totalCustomers || 0}</p>
+                        <p className="text-xs text-gray-500">customers</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1466,236 +977,94 @@ const SuperAdminUI: React.FC = () => {
         )}
       </main>
 
-      {/* Create Restaurant Modal */}
-      {showCreateRestaurant && (
+      {/* Restaurant Details Modal */}
+      {showRestaurantModal && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Create Restaurant Account</h3>
+              <h3 className="text-lg font-bold text-gray-900">Restaurant Details</h3>
               <button
-                onClick={() => setShowCreateRestaurant(false)}
+                onClick={() => {
+                  setShowRestaurantModal(false);
+                  setSelectedRestaurant(null);
+                }}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Restaurant Name
-                </label>
-                <input
-                  type="text"
-                  value={restaurantForm.name}
-                  onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="Enter restaurant name"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Owner First Name
-                  </label>
-                  <input
-                    type="text"
-                    value={restaurantForm.ownerFirstName}
-                    onChange={(e) => setRestaurantForm({ ...restaurantForm, ownerFirstName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                    placeholder="First name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Owner Last Name
-                  </label>
-                  <input
-                    type="text"
-                    value={restaurantForm.ownerLastName}
-                    onChange={(e) => setRestaurantForm({ ...restaurantForm, ownerLastName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                    placeholder="Last name"
-                  />
+            <div className="space-y-6">
+              {/* Basic Info */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Basic Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Name</p>
+                    <p className="font-medium text-gray-900">{selectedRestaurant.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Slug</p>
+                    <p className="font-medium text-gray-900">/{selectedRestaurant.slug}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Owner Email</p>
+                    <p className="font-medium text-gray-900">{selectedRestaurant.owner?.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Created</p>
+                    <p className="font-medium text-gray-900">{formatDate(selectedRestaurant.created_at)}</p>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Owner Email
-                </label>
-                <input
-                  type="email"
-                  value={restaurantForm.ownerEmail}
-                  onChange={(e) => setRestaurantForm({ ...restaurantForm, ownerEmail: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="owner@restaurant.com"
-                />
+              {/* Stats */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Performance Metrics</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-sm text-gray-600">Total Customers</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalCustomers || 0}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-xl font-bold text-gray-900">{formatCurrency(selectedRestaurant.stats?.totalRevenue || 0)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-sm text-gray-600">Total Rewards</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalRewards || 0}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-sm text-gray-600">Points Issued</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalPointsIssued?.toLocaleString() || 0}</p>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Owner Password
-                </label>
-                <input
-                  type="password"
-                  value={restaurantForm.ownerPassword}
-                  onChange={(e) => setRestaurantForm({ ...restaurantForm, ownerPassword: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="Enter password"
-                />
+              {/* Settings */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Loyalty Settings</h4>
+                <div className="text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Point Value (AED)</span>
+                    <span className="font-medium text-gray-900">{selectedRestaurant.settings?.pointValueAED || 0.05}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Blanket Mode</span>
+                    <span className="font-medium text-gray-900">
+                      {selectedRestaurant.settings?.blanketMode?.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  {selectedRestaurant.settings?.blanketMode?.enabled && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Mode Type</span>
+                      <span className="font-medium text-gray-900">
+                        {selectedRestaurant.settings.blanketMode.type?.charAt(0).toUpperCase() + selectedRestaurant.settings.blanketMode.type?.slice(1)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowCreateRestaurant(false)}
-                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateRestaurant}
-                disabled={loading}
-                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create Restaurant'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Restaurant Modal */}
-      {showEditRestaurant && editingRestaurant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Edit Restaurant</h3>
-              <button
-                onClick={() => setShowEditRestaurant(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Restaurant Name
-                </label>
-                <input
-                  type="text"
-                  value={restaurantForm.name}
-                  onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="Enter restaurant name"
-                />
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-sm text-gray-600">
-                  <strong>Owner:</strong> {editingRestaurant.owner_name} ({editingRestaurant.owner_email})
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>ID:</strong> {editingRestaurant.id}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowEditRestaurant(false)}
-                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateRestaurant}
-                disabled={loading}
-                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Update Restaurant'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Customer Points Adjustment Modal */}
-      {showCustomerModal && selectedCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Adjust Customer Points</h3>
-              <button
-                onClick={() => setShowCustomerModal(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="font-medium text-gray-900">
-                  {selectedCustomer.first_name} {selectedCustomer.last_name}
-                </p>
-                <p className="text-sm text-gray-600">{selectedCustomer.email}</p>
-                <p className="text-sm text-gray-600">
-                  Current Points: {selectedCustomer.total_points}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Points Adjustment
-                </label>
-                <input
-                  type="number"
-                  value={customerPointsAdjustment.points}
-                  onChange={(e) => setCustomerPointsAdjustment({ 
-                    ...customerPointsAdjustment, 
-                    points: parseInt(e.target.value) || 0 
-                  })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="Enter points (positive to add, negative to subtract)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reason
-                </label>
-                <input
-                  type="text"
-                  value={customerPointsAdjustment.reason}
-                  onChange={(e) => setCustomerPointsAdjustment({ 
-                    ...customerPointsAdjustment, 
-                    reason: e.target.value 
-                  })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  placeholder="Reason for adjustment"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowCustomerModal(false)}
-                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAdjustCustomerPoints}
-                disabled={loading || !customerPointsAdjustment.reason.trim()}
-                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Adjust Points'}
-              </button>
             </div>
           </div>
         </div>

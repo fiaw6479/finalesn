@@ -167,9 +167,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const user = userData.user;
       
       const restaurantName = user?.user_metadata?.restaurant_name || 'My Restaurant';
-      const slug = `${restaurantName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+      // Create a more unique slug to prevent duplicates
+      const baseSlug = restaurantName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const timestamp = Date.now();
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const slug = `${baseSlug}-${timestamp}-${randomSuffix}`;
 
       console.log('🏗️ Creating restaurant:', restaurantName);
+
+      // Check if restaurant already exists for this user
+      const { data: existingRestaurant } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('owner_id', userId)
+        .limit(1);
+
+      if (existingRestaurant && existingRestaurant.length > 0) {
+        console.log('🏪 Restaurant already exists for user, fetching existing...');
+        const { data: restaurant } = await supabase
+          .from('restaurants')
+          .select('*')
+          .eq('owner_id', userId)
+          .single();
+        
+        if (restaurant) {
+          setRestaurant(restaurant);
+          return;
+        }
+      }
 
       const { data: restaurant, error: restaurantError } = await Promise.race([
         supabase
@@ -208,6 +233,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (restaurantError) {
         console.error('❌ Error creating restaurant:', restaurantError);
+        // If it's a duplicate slug error, try again with a different slug
+        if (restaurantError.code === '23505' && restaurantError.message.includes('slug')) {
+          console.log('🔄 Slug conflict, retrying with new slug...');
+          return createDefaultRestaurant(userId);
+        }
         return;
       }
 
