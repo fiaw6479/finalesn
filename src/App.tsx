@@ -78,9 +78,7 @@ function App() {
           <Route 
             path="/super-admin" 
             element={
-              <ProtectedRoute>
-                <SuperAdminUI />
-              </ProtectedRoute>
+              <SuperAdminUI />
             }
           />
           

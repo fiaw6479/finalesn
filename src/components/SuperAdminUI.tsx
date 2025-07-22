@@ -6,9 +6,12 @@ import {
   TrendingUp, DollarSign, Gift, Clock, User, Mail,
   Phone, Calendar, MapPin, Star, Zap, Target, Loader2,
   MoreVertical, Ban, CheckCircle2, XCircle, Lock,
-  Unlock, Database, Activity, Globe, Monitor
+  Unlock, Database, Activity, Globe, Monitor, Send,
+  MessageCircle, ArrowRight, ArrowLeft, Minus, UserX,
+  RotateCcw, AlertTriangle, Save, FileText, Download
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { SupportService, SupportTicket, SupportMessage } from '../services/supportService';
 
 interface Restaurant {
   id: string;
@@ -18,16 +21,12 @@ interface Restaurant {
   settings: any;
   created_at: string;
   updated_at: string;
-  owner?: {
-    email: string;
-    user_metadata: any;
-  };
-  stats?: {
-    totalCustomers: number;
-    totalRewards: number;
-    totalRevenue: number;
-    totalPointsIssued: number;
-  };
+  owner_email?: string;
+  owner_metadata?: any;
+  total_customers?: number;
+  total_rewards?: number;
+  total_revenue?: number;
+  total_points_issued?: number;
 }
 
 interface Customer {
@@ -43,34 +42,17 @@ interface Customer {
   visit_count: number;
   total_spent: number;
   created_at: string;
-  restaurant?: {
-    name: string;
-    slug: string;
-  };
-}
-
-interface SupportTicket {
-  id: string;
-  restaurant_id: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  category: string;
-  created_at: string;
-  restaurant?: {
-    name: string;
-    slug: string;
-  };
+  restaurant_name?: string;
+  restaurant_slug?: string;
 }
 
 interface SystemStats {
-  totalRestaurants: number;
-  totalCustomers: number;
-  totalRevenue: number;
-  totalPointsIssued: number;
-  activeTickets: number;
-  monthlyGrowth: {
+  total_restaurants: number;
+  total_customers: number;
+  total_revenue: number;
+  total_points_issued: number;
+  active_tickets: number;
+  monthly_growth: {
     restaurants: number;
     customers: number;
     revenue: number;
@@ -87,13 +69,30 @@ const SuperAdminUI: React.FC = () => {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   
   // UI states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showRestaurantModal, setShowRestaurantModal] = useState(false);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  
+  // Form states
+  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
+  const [restaurantForm, setRestaurantForm] = useState({
+    name: '',
+    slug: '',
+    settings: {}
+  });
+  const [pointsAdjustment, setPointsAdjustment] = useState(0);
+  const [adjustmentReason, setAdjustmentReason] = useState('');
 
   useEffect(() => {
     checkAuthentication();
@@ -104,6 +103,26 @@ const SuperAdminUI: React.FC = () => {
       fetchAllData();
     }
   }, [isAuthenticated, activeTab]);
+
+  useEffect(() => {
+    if (selectedTicket) {
+      fetchMessages();
+      
+      // Subscribe to real-time message updates
+      const subscription = SupportService.subscribeToMessages(
+        selectedTicket.id,
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setMessages(prev => [...prev, payload.new]);
+          }
+        }
+      );
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [selectedTicket]);
 
   const checkAuthentication = () => {
     const authenticated = localStorage.getItem('super_admin_authenticated');
@@ -161,63 +180,9 @@ const SuperAdminUI: React.FC = () => {
 
   const fetchSystemStats = async () => {
     try {
-      // Get total restaurants
-      const { data: restaurantsData, error: restaurantsError } = await supabase
-        .from('restaurants')
-        .select('id, created_at');
-
-      if (restaurantsError) throw restaurantsError;
-
-      // Get total customers across all restaurants
-      const { data: customersData, error: customersError } = await supabase
-        .from('customers')
-        .select('id, total_spent, created_at');
-
-      if (customersError) throw customersError;
-
-      // Get total points issued
-      const { data: transactionsData, error: transactionsError } = await supabase
-        .from('transactions')
-        .select('points')
-        .gt('points', 0);
-
-      if (transactionsError) throw transactionsError;
-
-      // Get active support tickets
-      const { data: ticketsData, error: ticketsError } = await supabase
-        .from('support_tickets')
-        .select('id')
-        .in('status', ['open', 'in_progress']);
-
-      if (ticketsError) throw ticketsError;
-
-      // Calculate monthly growth
-      const now = new Date();
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      
-      const newRestaurantsThisMonth = restaurantsData?.filter(r => 
-        new Date(r.created_at) >= lastMonth
-      ).length || 0;
-      
-      const newCustomersThisMonth = customersData?.filter(c => 
-        new Date(c.created_at) >= lastMonth
-      ).length || 0;
-
-      const totalRevenue = customersData?.reduce((sum, c) => sum + c.total_spent, 0) || 0;
-      const totalPointsIssued = transactionsData?.reduce((sum, t) => sum + t.points, 0) || 0;
-
-      setSystemStats({
-        totalRestaurants: restaurantsData?.length || 0,
-        totalCustomers: customersData?.length || 0,
-        totalRevenue,
-        totalPointsIssued,
-        activeTickets: ticketsData?.length || 0,
-        monthlyGrowth: {
-          restaurants: newRestaurantsThisMonth,
-          customers: newCustomersThisMonth,
-          revenue: 0 // Would need more complex calculation
-        }
-      });
+      const { data, error } = await supabase.rpc('get_system_statistics');
+      if (error) throw error;
+      setSystemStats(data);
     } catch (error) {
       console.error('Error fetching system stats:', error);
     }
@@ -225,80 +190,18 @@ const SuperAdminUI: React.FC = () => {
 
   const fetchRestaurants = async () => {
     try {
-      // Get restaurants with owner information and stats
-      const { data: restaurantsData, error } = await supabase
-        .from('restaurants')
-        .select(`
-          *,
-          owner:users!restaurants_owner_id_fkey(email, user_metadata)
-        `)
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.rpc('get_all_restaurants_for_super_admin');
       if (error) throw error;
-
-      // Fetch stats for each restaurant
-      const restaurantsWithStats = await Promise.all(
-        (restaurantsData || []).map(async (restaurant) => {
-          try {
-            // Get customer count
-            const { data: customers } = await supabase
-              .from('customers')
-              .select('id, total_spent')
-              .eq('restaurant_id', restaurant.id);
-
-            // Get rewards count
-            const { data: rewards } = await supabase
-              .from('rewards')
-              .select('id')
-              .eq('restaurant_id', restaurant.id);
-
-            // Get points issued
-            const { data: transactions } = await supabase
-              .from('transactions')
-              .select('points')
-              .eq('restaurant_id', restaurant.id)
-              .gt('points', 0);
-
-            const stats = {
-              totalCustomers: customers?.length || 0,
-              totalRewards: rewards?.length || 0,
-              totalRevenue: customers?.reduce((sum, c) => sum + c.total_spent, 0) || 0,
-              totalPointsIssued: transactions?.reduce((sum, t) => sum + t.points, 0) || 0
-            };
-
-            return { ...restaurant, stats };
-          } catch (error) {
-            console.error(`Error fetching stats for restaurant ${restaurant.id}:`, error);
-            return {
-              ...restaurant,
-              stats: {
-                totalCustomers: 0,
-                totalRewards: 0,
-                totalRevenue: 0,
-                totalPointsIssued: 0
-              }
-            };
-          }
-        })
-      );
-
-      setRestaurants(restaurantsWithStats);
+      setRestaurants(data || []);
     } catch (error) {
       console.error('Error fetching restaurants:', error);
+      setError('Failed to fetch restaurants');
     }
   };
 
   const fetchCustomers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select(`
-          *,
-          restaurant:restaurants(name, slug)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
+      const { data, error } = await supabase.rpc('get_all_customers_for_super_admin');
       if (error) throw error;
       setCustomers(data || []);
     } catch (error) {
@@ -308,18 +211,21 @@ const SuperAdminUI: React.FC = () => {
 
   const fetchSupportTickets = async () => {
     try {
-      const { data, error } = await supabase
-        .from('support_tickets')
-        .select(`
-          *,
-          restaurant:restaurants(name, slug)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setSupportTickets(data || []);
+      const tickets = await SupportService.getAllTickets();
+      setSupportTickets(tickets);
     } catch (error) {
       console.error('Error fetching support tickets:', error);
+    }
+  };
+
+  const fetchMessages = async () => {
+    if (!selectedTicket) return;
+    
+    try {
+      const messagesData = await SupportService.getTicketMessages(selectedTicket.id);
+      setMessages(messagesData);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
     }
   };
 
@@ -329,17 +235,15 @@ const SuperAdminUI: React.FC = () => {
     window.location.href = '/super-admin-login';
   };
 
-  const handleDeleteRestaurant = async (restaurantId: string) => {
-    if (!confirm('Are you sure you want to delete this restaurant? This will delete ALL associated data including customers, rewards, and transactions. This action cannot be undone.')) {
+  const handleDeleteRestaurant = async (restaurantId: string, restaurantName: string) => {
+    if (!confirm(`Are you sure you want to delete "${restaurantName}"? This will delete ALL associated data including customers, rewards, and transactions. This action cannot be undone.`)) {
       return;
     }
 
     try {
-      // Delete restaurant (cascade will handle related data)
-      const { error } = await supabase
-        .from('restaurants')
-        .delete()
-        .eq('id', restaurantId);
+      const { error } = await supabase.rpc('super_admin_delete_restaurant', {
+        p_restaurant_id: restaurantId
+      });
 
       if (error) throw error;
 
@@ -351,20 +255,141 @@ const SuperAdminUI: React.FC = () => {
     }
   };
 
-  const handleUpdateTicketStatus = async (ticketId: string, status: string) => {
+  const handleUpdateRestaurant = async () => {
+    if (!editingRestaurant) return;
+
     try {
       const { error } = await supabase
-        .from('support_tickets')
-        .update({ status, assigned_to_admin: 'Super Admin' })
-        .eq('id', ticketId);
+        .from('restaurants')
+        .update({
+          name: restaurantForm.name,
+          slug: restaurantForm.slug,
+          settings: restaurantForm.settings
+        })
+        .eq('id', editingRestaurant.id);
 
       if (error) throw error;
 
+      setEditingRestaurant(null);
+      setShowRestaurantModal(false);
+      await fetchRestaurants();
+      alert('Restaurant updated successfully');
+    } catch (error: any) {
+      console.error('Error updating restaurant:', error);
+      alert('Failed to update restaurant: ' + error.message);
+    }
+  };
+
+  const handleAdjustCustomerPoints = async () => {
+    if (!selectedCustomer || pointsAdjustment === 0) return;
+
+    try {
+      const { error } = await supabase.rpc('super_admin_adjust_customer_points', {
+        p_customer_id: selectedCustomer.id,
+        p_points_adjustment: pointsAdjustment,
+        p_description: adjustmentReason || 'Super admin adjustment'
+      });
+
+      if (error) throw error;
+
+      setSelectedCustomer(null);
+      setShowCustomerModal(false);
+      setPointsAdjustment(0);
+      setAdjustmentReason('');
+      await fetchCustomers();
+      alert(`Successfully adjusted points for ${selectedCustomer.first_name} ${selectedCustomer.last_name}`);
+    } catch (error: any) {
+      console.error('Error adjusting customer points:', error);
+      alert('Failed to adjust points: ' + error.message);
+    }
+  };
+
+  const handleResetAllData = async () => {
+    if (!confirm('Are you sure you want to reset ALL customer data across the entire platform? This will reset points, transactions, and redemptions for ALL customers. This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('super_admin_reset_customer_data');
+      if (error) throw error;
+
+      await fetchAllData();
+      alert('All customer data has been reset successfully');
+    } catch (error: any) {
+      console.error('Error resetting data:', error);
+      alert('Failed to reset data: ' + error.message);
+    }
+  };
+
+  const handleResetRestaurantData = async (restaurantId: string, restaurantName: string) => {
+    if (!confirm(`Are you sure you want to reset all customer data for "${restaurantName}"? This will reset points, transactions, and redemptions for all customers of this restaurant. This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('super_admin_reset_customer_data', {
+        p_restaurant_id: restaurantId
+      });
+
+      if (error) throw error;
+
+      await fetchAllData();
+      alert(`Customer data for ${restaurantName} has been reset successfully`);
+    } catch (error: any) {
+      console.error('Error resetting restaurant data:', error);
+      alert('Failed to reset restaurant data: ' + error.message);
+    }
+  };
+
+  const handleUpdateTicketStatus = async (ticketId: string, status: string) => {
+    try {
+      await SupportService.updateTicketStatus(ticketId, status as any, 'Super Admin');
       await fetchSupportTickets();
     } catch (error: any) {
       console.error('Error updating ticket status:', error);
       alert('Failed to update ticket status: ' + error.message);
     }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedTicket || !newMessage.trim()) return;
+
+    try {
+      setSendingMessage(true);
+      
+      await SupportService.sendMessage({
+        ticket_id: selectedTicket.id,
+        sender_type: 'super_admin',
+        sender_id: 'super_admin',
+        message: newMessage
+      });
+
+      setNewMessage('');
+      await fetchMessages();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const openRestaurantModal = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant);
+    setEditingRestaurant(restaurant);
+    setRestaurantForm({
+      name: restaurant.name,
+      slug: restaurant.slug,
+      settings: restaurant.settings || {}
+    });
+    setShowRestaurantModal(true);
+  };
+
+  const openCustomerModal = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setPointsAdjustment(0);
+    setAdjustmentReason('');
+    setShowCustomerModal(true);
   };
 
   const getStatusColor = (status: string) => {
@@ -441,8 +466,18 @@ const SuperAdminUI: React.FC = () => {
               onClick={fetchAllData}
               disabled={refreshing}
               className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh All Data"
             >
               <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+              title="Reset All Customer Data"
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              Reset Data
             </button>
             
             <div className="flex items-center gap-3">
@@ -528,10 +563,10 @@ const SuperAdminUI: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Restaurants</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalRestaurants}</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.total_restaurants}</p>
                   </div>
                 </div>
-                <p className="text-xs text-green-600">+{systemStats.monthlyGrowth.restaurants} this month</p>
+                <p className="text-xs text-green-600">+{systemStats.monthly_growth.restaurants} this month</p>
               </div>
 
               <div className="bg-white rounded-2xl p-6 border border-gray-200">
@@ -541,10 +576,10 @@ const SuperAdminUI: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Customers</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalCustomers.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.total_customers.toLocaleString()}</p>
                   </div>
                 </div>
-                <p className="text-xs text-green-600">+{systemStats.monthlyGrowth.customers} this month</p>
+                <p className="text-xs text-green-600">+{systemStats.monthly_growth.customers} this month</p>
               </div>
 
               <div className="bg-white rounded-2xl p-6 border border-gray-200">
@@ -554,7 +589,7 @@ const SuperAdminUI: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(systemStats.totalRevenue)}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(systemStats.total_revenue)}</p>
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">Across all restaurants</p>
@@ -567,7 +602,7 @@ const SuperAdminUI: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Points Issued</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.totalPointsIssued.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.total_points_issued.toLocaleString()}</p>
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">Total loyalty points</p>
@@ -580,14 +615,14 @@ const SuperAdminUI: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Active Tickets</p>
-                    <p className="text-2xl font-bold text-gray-900">{systemStats.activeTickets}</p>
+                    <p className="text-2xl font-bold text-gray-900">{systemStats.active_tickets}</p>
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">Pending support</p>
               </div>
             </div>
 
-            {/* Recent Activity */}
+            {/* System Health */}
             <div className="bg-white rounded-2xl p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">System Health</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -647,7 +682,7 @@ const SuperAdminUI: React.FC = () => {
                 .filter(restaurant => 
                   restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   restaurant.slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  restaurant.owner?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+                  restaurant.owner_email?.toLowerCase().includes(searchQuery.toLowerCase())
                 )
                 .map((restaurant) => (
                 <div key={restaurant.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-200">
@@ -660,14 +695,34 @@ const SuperAdminUI: React.FC = () => {
                         <div>
                           <h3 className="font-semibold text-gray-900">{restaurant.name}</h3>
                           <p className="text-sm text-gray-600">/{restaurant.slug}</p>
-                          <p className="text-xs text-gray-500">{restaurant.owner?.email}</p>
+                          <p className="text-xs text-gray-500">{restaurant.owner_email}</p>
                         </div>
                       </div>
                       
                       <div className="relative">
-                        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => openRestaurantModal(restaurant)}
+                            className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                            title="Edit Restaurant"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleResetRestaurantData(restaurant.id, restaurant.name)}
+                            className="p-2 text-gray-400 hover:text-yellow-600 rounded-lg hover:bg-yellow-50 transition-colors"
+                            title="Reset Customer Data"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRestaurant(restaurant.id, restaurant.name)}
+                            className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Delete Restaurant"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -678,7 +733,7 @@ const SuperAdminUI: React.FC = () => {
                           <Users className="h-4 w-4 text-blue-600" />
                           <span className="text-xs text-blue-600">Customers</span>
                         </div>
-                        <p className="text-lg font-bold text-blue-900">{restaurant.stats?.totalCustomers || 0}</p>
+                        <p className="text-lg font-bold text-blue-900">{restaurant.total_customers || 0}</p>
                       </div>
                       
                       <div className="bg-green-50 rounded-lg p-3">
@@ -686,7 +741,7 @@ const SuperAdminUI: React.FC = () => {
                           <DollarSign className="h-4 w-4 text-green-600" />
                           <span className="text-xs text-green-600">Revenue</span>
                         </div>
-                        <p className="text-lg font-bold text-green-900">{formatCurrency(restaurant.stats?.totalRevenue || 0)}</p>
+                        <p className="text-lg font-bold text-green-900">{formatCurrency(restaurant.total_revenue || 0)}</p>
                       </div>
                       
                       <div className="bg-purple-50 rounded-lg p-3">
@@ -694,7 +749,7 @@ const SuperAdminUI: React.FC = () => {
                           <Gift className="h-4 w-4 text-purple-600" />
                           <span className="text-xs text-purple-600">Rewards</span>
                         </div>
-                        <p className="text-lg font-bold text-purple-900">{restaurant.stats?.totalRewards || 0}</p>
+                        <p className="text-lg font-bold text-purple-900">{restaurant.total_rewards || 0}</p>
                       </div>
                       
                       <div className="bg-yellow-50 rounded-lg p-3">
@@ -702,33 +757,12 @@ const SuperAdminUI: React.FC = () => {
                           <Zap className="h-4 w-4 text-yellow-600" />
                           <span className="text-xs text-yellow-600">Points</span>
                         </div>
-                        <p className="text-lg font-bold text-yellow-900">{restaurant.stats?.totalPointsIssued?.toLocaleString() || 0}</p>
+                        <p className="text-lg font-bold text-yellow-900">{restaurant.total_points_issued?.toLocaleString() || 0}</p>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedRestaurant(restaurant);
-                          setShowRestaurantModal(true);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        <Eye className="h-4 w-4" />
-                        View Details
-                      </button>
-                      
-                      <button
-                        onClick={() => handleDeleteRestaurant(restaurant.id)}
-                        className="flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-
                     {/* Created Date */}
-                    <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="pt-3 border-t border-gray-100">
                       <p className="text-xs text-gray-500">
                         Created {formatDate(restaurant.created_at)}
                       </p>
@@ -746,7 +780,7 @@ const SuperAdminUI: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Customer Management</h2>
-                <p className="text-gray-600">View all customers across all restaurants</p>
+                <p className="text-gray-600">View and manage all customers across all restaurants</p>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -773,6 +807,7 @@ const SuperAdminUI: React.FC = () => {
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Spent</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Visits</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Joined</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -781,7 +816,7 @@ const SuperAdminUI: React.FC = () => {
                         customer.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         customer.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        customer.restaurant?.name.toLowerCase().includes(searchQuery.toLowerCase())
+                        customer.restaurant_name?.toLowerCase().includes(searchQuery.toLowerCase())
                       )
                       .map((customer) => (
                       <tr key={customer.id} className="hover:bg-gray-50">
@@ -797,8 +832,8 @@ const SuperAdminUI: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">{customer.restaurant?.name}</p>
-                          <p className="text-sm text-gray-500">/{customer.restaurant?.slug}</p>
+                          <p className="font-medium text-gray-900">{customer.restaurant_name}</p>
+                          <p className="text-sm text-gray-500">/{customer.restaurant_slug}</p>
                         </td>
                         <td className="py-3 px-4">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
@@ -824,6 +859,15 @@ const SuperAdminUI: React.FC = () => {
                         </td>
                         <td className="py-3 px-4">
                           <p className="text-sm text-gray-500">{formatDate(customer.created_at)}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => openCustomerModal(customer)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Adjust Points"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -854,63 +898,168 @@ const SuperAdminUI: React.FC = () => {
               </div>
             </div>
 
-            {/* Support Tickets Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {supportTickets
-                .filter(ticket => 
-                  ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  ticket.restaurant?.name.toLowerCase().includes(searchQuery.toLowerCase())
-                )
-                .map((ticket) => (
-                <div key={ticket.id} className="bg-white rounded-2xl border border-gray-200 p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 mb-1">{ticket.title}</h3>
-                      <p className="text-sm text-gray-600 mb-2">{ticket.description}</p>
-                      <p className="text-xs text-gray-500">From: {ticket.restaurant?.name}</p>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(ticket.status)}`}>
-                        {ticket.status.replace('_', ' ')}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(ticket.priority)}`}>
-                        {ticket.priority}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500">{formatDate(ticket.created_at)}</p>
-                    <div className="flex gap-2">
-                      {ticket.status === 'open' && (
-                        <button
-                          onClick={() => handleUpdateTicketStatus(ticket.id, 'in_progress')}
-                          className="px-3 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-lg hover:bg-yellow-200 transition-colors"
-                        >
-                          Start Progress
-                        </button>
-                      )}
-                      {ticket.status === 'in_progress' && (
-                        <button
-                          onClick={() => handleUpdateTicketStatus(ticket.id, 'resolved')}
-                          className="px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors"
-                        >
-                          Mark Resolved
-                        </button>
-                      )}
-                      {ticket.status === 'resolved' && (
-                        <button
-                          onClick={() => handleUpdateTicketStatus(ticket.id, 'closed')}
-                          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                        >
-                          Close Ticket
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-300px)]">
+              {/* Tickets Sidebar */}
+              <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
+                <div className="p-4 border-b border-gray-200">
+                  <h3 className="font-semibold text-gray-900">Support Tickets</h3>
                 </div>
-              ))}
+                
+                <div className="flex-1 overflow-y-auto">
+                  {supportTickets
+                    .filter(ticket => 
+                      ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      ticket.restaurant?.name.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      onClick={() => setSelectedTicket(ticket)}
+                      className={`w-full p-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
+                        selectedTicket?.id === ticket.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-medium text-gray-900 text-sm line-clamp-1">
+                          {ticket.title}
+                        </h4>
+                        <div className="flex gap-1">
+                          <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(ticket.status)}`}>
+                            {ticket.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2 mb-2">
+                        {ticket.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">
+                          {ticket.restaurant?.name}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {formatDate(ticket.created_at)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat Area */}
+              <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl flex flex-col">
+                {selectedTicket ? (
+                  <>
+                    {/* Chat Header */}
+                    <div className="p-4 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="font-semibold text-gray-900">{selectedTicket.title}</h2>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(selectedTicket.status)}`}>
+                              {selectedTicket.status.replace('_', ' ')}
+                            </span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(selectedTicket.priority)}`}>
+                              {selectedTicket.priority}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {selectedTicket.restaurant?.name}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          {selectedTicket.status === 'open' && (
+                            <button
+                              onClick={() => handleUpdateTicketStatus(selectedTicket.id, 'in_progress')}
+                              className="px-3 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-lg hover:bg-yellow-200 transition-colors"
+                            >
+                              Start Progress
+                            </button>
+                          )}
+                          {selectedTicket.status === 'in_progress' && (
+                            <button
+                              onClick={() => handleUpdateTicketStatus(selectedTicket.id, 'resolved')}
+                              className="px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors"
+                            >
+                              Mark Resolved
+                            </button>
+                          )}
+                          {selectedTicket.status === 'resolved' && (
+                            <button
+                              onClick={() => handleUpdateTicketStatus(selectedTicket.id, 'closed')}
+                              className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                              Close Ticket
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Ticket Description */}
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedTicket.description}</p>
+                      </div>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      {messages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`flex ${message.sender_type === 'super_admin' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                            message.sender_type === 'super_admin'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-200 text-gray-900'
+                          }`}>
+                            <p className="text-sm">{message.message}</p>
+                            <p className={`text-xs mt-1 ${
+                              message.sender_type === 'super_admin' ? 'text-red-200' : 'text-gray-500'
+                            }`}>
+                              {formatDate(message.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Message Input */}
+                    <div className="p-4 border-t border-gray-200">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && !sendingMessage && handleSendMessage()}
+                          placeholder="Type your response..."
+                          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        />
+                        <button
+                          onClick={handleSendMessage}
+                          disabled={sendingMessage || !newMessage.trim()}
+                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {sendingMessage ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <MessageCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Select a Ticket</h3>
+                      <p className="text-gray-500">Choose a support ticket to view the conversation</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -931,19 +1080,19 @@ const SuperAdminUI: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Total Restaurants</span>
-                    <span className="font-bold text-gray-900">{systemStats.totalRestaurants}</span>
+                    <span className="font-bold text-gray-900">{systemStats.total_restaurants}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Total Customers</span>
-                    <span className="font-bold text-gray-900">{systemStats.totalCustomers.toLocaleString()}</span>
+                    <span className="font-bold text-gray-900">{systemStats.total_customers.toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Platform Revenue</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(systemStats.totalRevenue)}</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(systemStats.total_revenue)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Points Issued</span>
-                    <span className="font-bold text-gray-900">{systemStats.totalPointsIssued.toLocaleString()}</span>
+                    <span className="font-bold text-gray-900">{systemStats.total_points_issued.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -953,7 +1102,7 @@ const SuperAdminUI: React.FC = () => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Restaurants</h3>
                 <div className="space-y-3">
                   {restaurants
-                    .sort((a, b) => (b.stats?.totalRevenue || 0) - (a.stats?.totalRevenue || 0))
+                    .sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0))
                     .slice(0, 5)
                     .map((restaurant, index) => (
                     <div key={restaurant.id} className="flex items-center gap-3">
@@ -962,10 +1111,10 @@ const SuperAdminUI: React.FC = () => {
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{restaurant.name}</p>
-                        <p className="text-sm text-gray-500">{formatCurrency(restaurant.stats?.totalRevenue || 0)}</p>
+                        <p className="text-sm text-gray-500">{formatCurrency(restaurant.total_revenue || 0)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">{restaurant.stats?.totalCustomers || 0}</p>
+                        <p className="text-sm font-medium text-gray-900">{restaurant.total_customers || 0}</p>
                         <p className="text-xs text-gray-500">customers</p>
                       </div>
                     </div>
@@ -977,16 +1126,17 @@ const SuperAdminUI: React.FC = () => {
         )}
       </main>
 
-      {/* Restaurant Details Modal */}
+      {/* Restaurant Edit Modal */}
       {showRestaurantModal && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Restaurant Details</h3>
+              <h3 className="text-lg font-bold text-gray-900">Restaurant Details & Management</h3>
               <button
                 onClick={() => {
                   setShowRestaurantModal(false);
                   setSelectedRestaurant(null);
+                  setEditingRestaurant(null);
                 }}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
               >
@@ -998,22 +1148,34 @@ const SuperAdminUI: React.FC = () => {
               {/* Basic Info */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Basic Information</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-3">
                   <div>
-                    <p className="text-gray-600">Name</p>
-                    <p className="font-medium text-gray-900">{selectedRestaurant.name}</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Restaurant Name</label>
+                    <input
+                      type="text"
+                      value={restaurantForm.name}
+                      onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
                   </div>
                   <div>
-                    <p className="text-gray-600">Slug</p>
-                    <p className="font-medium text-gray-900">/{selectedRestaurant.slug}</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+                    <input
+                      type="text"
+                      value={restaurantForm.slug}
+                      onChange={(e) => setRestaurantForm({ ...restaurantForm, slug: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
                   </div>
-                  <div>
-                    <p className="text-gray-600">Owner Email</p>
-                    <p className="font-medium text-gray-900">{selectedRestaurant.owner?.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Created</p>
-                    <p className="font-medium text-gray-900">{formatDate(selectedRestaurant.created_at)}</p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-600">Owner Email</p>
+                      <p className="font-medium text-gray-900">{selectedRestaurant.owner_email}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Created</p>
+                      <p className="font-medium text-gray-900">{formatDate(selectedRestaurant.created_at)}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1024,19 +1186,19 @@ const SuperAdminUI: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white rounded-lg p-3">
                     <p className="text-sm text-gray-600">Total Customers</p>
-                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalCustomers || 0}</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.total_customers || 0}</p>
                   </div>
                   <div className="bg-white rounded-lg p-3">
                     <p className="text-sm text-gray-600">Total Revenue</p>
-                    <p className="text-xl font-bold text-gray-900">{formatCurrency(selectedRestaurant.stats?.totalRevenue || 0)}</p>
+                    <p className="text-xl font-bold text-gray-900">{formatCurrency(selectedRestaurant.total_revenue || 0)}</p>
                   </div>
                   <div className="bg-white rounded-lg p-3">
                     <p className="text-sm text-gray-600">Total Rewards</p>
-                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalRewards || 0}</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.total_rewards || 0}</p>
                   </div>
                   <div className="bg-white rounded-lg p-3">
                     <p className="text-sm text-gray-600">Points Issued</p>
-                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.stats?.totalPointsIssued?.toLocaleString() || 0}</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedRestaurant.total_points_issued?.toLocaleString() || 0}</p>
                   </div>
                 </div>
               </div>
@@ -1064,6 +1226,193 @@ const SuperAdminUI: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRestaurantModal(false);
+                    setSelectedRestaurant(null);
+                    setEditingRestaurant(null);
+                  }}
+                  className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateRestaurant}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-xl hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Points Adjustment Modal */}
+      {showCustomerModal && selectedCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-900">Adjust Customer Points</h3>
+              <button
+                onClick={() => {
+                  setShowCustomerModal(false);
+                  setSelectedCustomer(null);
+                  setPointsAdjustment(0);
+                  setAdjustmentReason('');
+                }}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Customer Info */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center text-white font-medium">
+                    {selectedCustomer.first_name[0]}{selectedCustomer.last_name[0]}
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {selectedCustomer.first_name} {selectedCustomer.last_name}
+                    </p>
+                    <p className="text-sm text-gray-500">{selectedCustomer.email}</p>
+                    <p className="text-sm text-gray-500">
+                      Current Points: {selectedCustomer.total_points.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Points Adjustment
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPointsAdjustment(Math.max(-selectedCustomer.total_points, pointsAdjustment - 10))}
+                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="number"
+                    value={pointsAdjustment}
+                    onChange={(e) => setPointsAdjustment(parseInt(e.target.value) || 0)}
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-center focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    placeholder="0"
+                  />
+                  <button
+                    onClick={() => setPointsAdjustment(pointsAdjustment + 10)}
+                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  New balance: {(selectedCustomer.total_points + pointsAdjustment).toLocaleString()} points
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason for Adjustment
+                </label>
+                <textarea
+                  value={adjustmentReason}
+                  onChange={(e) => setAdjustmentReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  placeholder="Enter reason for points adjustment..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCustomerModal(false);
+                    setSelectedCustomer(null);
+                    setPointsAdjustment(0);
+                    setAdjustmentReason('');
+                  }}
+                  className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdjustCustomerPoints}
+                  disabled={pointsAdjustment === 0}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-xl hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Zap className="h-4 w-4" />
+                  Adjust Points
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Data Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-900">Reset Customer Data</h3>
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-red-900 mb-1">Warning</p>
+                    <p className="text-red-800 text-sm">
+                      This will reset ALL customer data across the entire platform including:
+                    </p>
+                    <ul className="text-red-800 text-sm mt-2 list-disc list-inside">
+                      <li>All customer points (set to 0)</li>
+                      <li>All transaction history</li>
+                      <li>All reward redemptions</li>
+                      <li>Visit counts and spending data</li>
+                    </ul>
+                    <p className="text-red-800 text-sm mt-2 font-medium">
+                      This action cannot be undone!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowResetModal(false)}
+                  className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowResetModal(false);
+                    handleResetAllData();
+                  }}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-xl hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset All Data
+                </button>
               </div>
             </div>
           </div>

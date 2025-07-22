@@ -130,6 +130,11 @@ export class SupportService {
 
   // Send a message
   static async sendMessage(messageData: CreateMessageData): Promise<SupportMessage> {
+    // Validate sender_type
+    if (!['restaurant_manager', 'super_admin'].includes(messageData.sender_type)) {
+      throw new Error('Invalid sender type');
+    }
+
     const { data, error } = await supabase
       .from('support_messages')
       .insert(messageData)
