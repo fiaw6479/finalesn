@@ -453,7 +453,7 @@ const SuperAdminUI: React.FC = () => {
         <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-700 rounded-xl flex items-center justify-center">
-              <Shield className="w-6 h-6 text-white" />
+              <ChefHat className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Super Admin Dashboard</h1>
@@ -486,7 +486,7 @@ const SuperAdminUI: React.FC = () => {
                 <p className="text-xs text-gray-500">System Administrator</p>
               </div>
               <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-full flex items-center justify-center">
-                <Crown className="w-5 h-5 text-white" />
+                <ChefHat className="w-5 h-5 text-white" />
               </div>
             </div>
             
