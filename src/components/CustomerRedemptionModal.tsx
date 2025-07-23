@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Gift, Sparkles, CheckCircle, QrCode, Clock, 
   User, Crown, Award, ChefHat, Copy, Check, Share2,
@@ -104,107 +105,144 @@ const CustomerRedemptionModal: React.FC<CustomerRedemptionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <motion.div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div 
+        className="bg-white/95 backdrop-blur-xl rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-white/20"
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200/50 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <h3 className="text-xl font-bold text-gray-900">
             {step === 'confirm' ? 'Confirm Redemption' :
              step === 'processing' ? 'Processing...' :
              step === 'qr' ? 'Redemption QR Code' :
              'Redemption Complete!'}
           </h3>
-          <button
+          <motion.button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-3 text-gray-400 hover:text-gray-600 rounded-2xl hover:bg-white/50 transition-all duration-300"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
           >
             <X className="h-5 w-5" />
-          </button>
+          </motion.button>
         </div>
 
         {/* Confirmation Step */}
         {step === 'confirm' && (
-          <div className="p-6 space-y-6">
+          <motion.div 
+            className="p-6 space-y-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
             {/* Reward Details */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+            <motion.div 
+              className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 }}
+            >
               <div className="flex items-start gap-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-xl flex items-center justify-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-2xl flex items-center justify-center shadow-lg">
                   <Gift className="h-8 w-8 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-semibold text-gray-900 mb-1">{reward.name}</h4>
+                  <h4 className="font-bold text-gray-900 mb-2 text-lg">{reward.name}</h4>
                   {reward.description && (
-                    <p className="text-gray-600 text-sm mb-2">{reward.description}</p>
+                    <p className="text-gray-600 mb-3">{reward.description}</p>
                   )}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[#1E2A78]">
+                    <span className="text-sm font-bold text-[#1E2A78]">
                       {reward.points_required} points
                     </span>
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                    <span className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-medium">
                       {reward.category}
                     </span>
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Customer Info */}
-            <div className="bg-gray-50 rounded-xl p-4">
+            <motion.div 
+              className="bg-gray-50 rounded-2xl p-6"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+            >
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center text-white font-medium">
+                <div className="w-14 h-14 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
                   {customer.first_name[0]}{customer.last_name[0]}
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">
+                  <p className="font-bold text-gray-900 text-lg">
                     {customer.first_name} {customer.last_name}
                   </p>
                   <div className="flex items-center gap-2">
                     <TierIcon className={`h-4 w-4 ${tierInfo.color}`} />
-                    <span className="text-sm text-gray-600">{tierInfo.name} Member</span>
+                    <span className="text-sm font-medium text-gray-600">{tierInfo.name} Member</span>
                   </div>
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-gray-500">Current Points</p>
-                  <p className="font-semibold text-gray-900">{customer.total_points.toLocaleString()}</p>
+                  <p className="text-gray-500 text-sm font-medium">Current Points</p>
+                  <p className="font-bold text-gray-900 text-lg">{customer.total_points.toLocaleString()}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">After Redemption</p>
-                  <p className="font-semibold text-gray-900">
+                  <p className="text-gray-500 text-sm font-medium">After Redemption</p>
+                  <p className="font-bold text-gray-900 text-lg">
                     {(customer.total_points - reward.points_required).toLocaleString()}
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Warning */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <motion.div 
+              className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+            >
               <div className="flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-yellow-900 mb-1">Important</p>
+                  <p className="font-bold text-yellow-900 mb-1">Important</p>
                   <p className="text-yellow-800 text-sm">
                     Once confirmed, {reward.points_required} points will be deducted from your account. 
                     Show the QR code to staff to complete your redemption.
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Action Buttons */}
             <div className="flex gap-3">
-              <button
+              <motion.button
                 onClick={onClose}
-                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+                className="flex-1 py-4 px-4 border border-gray-200 text-gray-700 rounded-2xl hover:bg-gray-50 transition-colors font-semibold"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 Cancel
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={handleConfirmRedemption}
                 disabled={loading}
-                className="flex-1 py-3 px-4 bg-gradient-to-r from-[#1E2A78] to-[#3B4B9A] text-white rounded-xl hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
+                className="flex-1 py-4 px-4 bg-gradient-to-r from-[#1E2A78] to-[#3B4B9A] text-white rounded-2xl hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -214,70 +252,106 @@ const CustomerRedemptionModal: React.FC<CustomerRedemptionModalProps> = ({
                     Confirm Redemption
                   </>
                 )}
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Processing Step */}
         {step === 'processing' && (
-          <div className="p-6 text-center py-12">
-            <div className="w-16 h-16 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center mx-auto mb-4">
+          <motion.div 
+            className="p-6 text-center py-12"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <motion.div 
+              className="w-20 h-20 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            >
               <Loader2 className="h-8 w-8 text-white animate-spin" />
-            </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Processing Redemption</h4>
-            <p className="text-gray-600">Please wait while we process your reward redemption...</p>
-          </div>
+            </motion.div>
+            <h4 className="text-xl font-bold text-gray-900 mb-3">Processing Redemption</h4>
+            <p className="text-gray-600 text-lg">Please wait while we process your reward redemption...</p>
+          </motion.div>
         )}
 
         {/* QR Code Step */}
         {step === 'qr' && (
-          <div className="p-6 space-y-6">
+          <motion.div 
+            className="p-6 space-y-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
             <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <motion.div 
+                className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200 }}
+              >
                 <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-2">Redemption Confirmed!</h4>
-              <p className="text-gray-600">Show this QR code to staff to claim your reward</p>
+              </motion.div>
+              <h4 className="text-xl font-bold text-gray-900 mb-3">Redemption Confirmed!</h4>
+              <p className="text-gray-600 text-lg">Show this QR code to staff to claim your reward</p>
             </div>
 
             {/* QR Code Display */}
-            <div className="bg-gray-50 rounded-xl p-6 text-center">
-              <div className="w-48 h-48 bg-white rounded-xl mx-auto mb-4 flex items-center justify-center border-2 border-gray-200">
+            <motion.div 
+              className="bg-gray-50 rounded-2xl p-6 text-center"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+            >
+              <div className="w-48 h-48 bg-white rounded-2xl mx-auto mb-6 flex items-center justify-center border-2 border-gray-200 shadow-lg">
                 <QrCode className="h-24 w-24 text-gray-400" />
               </div>
               
               <div className="space-y-2">
-                <p className="font-medium text-gray-900">Redemption Code</p>
+                <p className="font-bold text-gray-900 text-lg">Redemption Code</p>
                 <div className="flex items-center justify-center gap-2">
-                  <code className="bg-white px-3 py-2 rounded-lg border text-lg font-mono">
+                  <code className="bg-white px-4 py-3 rounded-2xl border text-xl font-mono font-bold shadow-sm">
                     {redemptionCode}
                   </code>
-                  <button
+                  <motion.button
                     onClick={() => copyToClipboard(redemptionCode)}
-                    className="p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="p-3 text-gray-600 hover:text-gray-800 rounded-2xl hover:bg-gray-200 transition-colors"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                   >
                     {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </button>
+                  </motion.button>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Reward Details */}
-            <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-              <h5 className="font-medium text-blue-900 mb-2">Your Reward</h5>
-              <p className="text-blue-800 font-semibold">{reward.name}</p>
+            <motion.div 
+              className="bg-blue-50 rounded-2xl p-4 border border-blue-200"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <h5 className="font-bold text-blue-900 mb-2">Your Reward</h5>
+              <p className="text-blue-800 font-bold text-lg">{reward.name}</p>
               {reward.description && (
                 <p className="text-blue-700 text-sm mt-1">{reward.description}</p>
               )}
-            </div>
+            </motion.div>
 
             {/* Instructions */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <motion.div 
+              className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
               <div className="flex items-start gap-3">
                 <Clock className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-yellow-900 mb-1">Next Steps</p>
+                  <p className="font-bold text-yellow-900 mb-2">Next Steps</p>
                   <ol className="text-yellow-800 text-sm space-y-1 list-decimal list-inside">
                     <li>Show this QR code to restaurant staff</li>
                     <li>Staff will scan or enter the redemption code</li>
@@ -285,46 +359,63 @@ const CustomerRedemptionModal: React.FC<CustomerRedemptionModalProps> = ({
                   </ol>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Demo Staff Confirmation Button */}
             <div className="border-t border-gray-200 pt-4">
               <p className="text-xs text-gray-500 text-center mb-3">
                 Demo: Staff would scan this QR code
               </p>
-              <button
+              <motion.button
                 onClick={handleStaffConfirmation}
-                className="w-full py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                className="w-full py-4 px-4 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-bold"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 <CheckCircle className="h-4 w-4" />
                 Staff: Confirm Redemption
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Complete Step */}
         {step === 'complete' && (
-          <div className="p-6 text-center py-12">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <motion.div 
+            className="p-6 text-center py-12"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <motion.div 
+              className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+            >
               <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Reward Claimed!</h4>
-            <p className="text-gray-600 mb-4">
+            </motion.div>
+            <h4 className="text-2xl font-bold text-gray-900 mb-3">Reward Claimed!</h4>
+            <p className="text-gray-600 mb-6 text-lg">
               Your {reward.name} has been successfully redeemed. Enjoy!
             </p>
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <motion.div 
+              className="bg-green-50 border border-green-200 rounded-2xl p-4"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
               <div className="flex items-center gap-2 justify-center">
                 <Star className="h-4 w-4 text-green-600" />
-                <p className="text-green-800 text-sm font-medium">
+                <p className="text-green-800 text-sm font-bold">
                   Thank you for being a loyal customer at {restaurant.name}!
                 </p>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
