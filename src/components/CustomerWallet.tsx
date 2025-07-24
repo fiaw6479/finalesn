@@ -611,7 +611,7 @@ const CustomerWallet: React.FC = () => {
                         className="text-7xl font-bold mb-3"
                         initial={{ scale: 0, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 1.8, duration: 1, ease: "back.out(1.7)" }}
+                        transition={{ delay: 1.8, duration: 1, ease: [0.175, 0.885, 0.32, 1.275] }}
                       >
                         {customer.total_points.toLocaleString()}
                       </motion.div>
@@ -633,7 +633,7 @@ const CustomerWallet: React.FC = () => {
                           className="bg-white h-2 rounded-full shadow-sm"
                           initial={{ width: 0 }}
                           animate={{ width: `${customer.tier_progress}%` }}
-                          transition={{ delay: 2.2, duration: 1.5, ease: "power3.out" }}
+                          transition={{ delay: 2.2, duration: 1.5, ease: [0.4, 0, 0.2, 1] }}
                         />
                       </div>
                     </motion.div>
