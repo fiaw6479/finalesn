@@ -290,7 +290,7 @@ const CustomerRedemptionModal: React.FC<CustomerRedemptionModalProps> = ({
                 className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[var(--shadow-soft)]"
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
+                transition={{ duration: 0.6, ease: [0.175, 0.885, 0.32, 1.275], delay: 0.2 }}
               >
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </motion.div>
