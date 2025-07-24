@@ -608,10 +608,16 @@ const CustomerWallet: React.FC = () => {
                     >
                       <p className="text-white/80 text-sm mb-3 font-medium">Available Points</p>
                       <motion.div
-                        className="text-7xl font-bold mb-3"
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 1.8, duration: 1, ease: "back.out(1.7)" }}
+  className="text-7xl font-bold mb-3"
+  initial={{ scale: 0, opacity: 0 }}
+  animate={{ scale: 1, opacity: 1 }}
+  transition={{
+    delay: 1.8,
+    duration: 1,
+    ease: [0.68, -0.6, 0.32, 1.6], // back.out(1.7) mimic
+  }}
+
+
                       >
                         {customer.total_points.toLocaleString()}
                       </motion.div>
