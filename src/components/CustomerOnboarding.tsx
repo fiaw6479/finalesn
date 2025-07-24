@@ -314,7 +314,7 @@ const CustomerOnboarding: React.FC<CustomerOnboardingProps> = ({ restaurant, onC
                     className="w-32 h-32 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-full flex items-center justify-center mx-auto shadow-[var(--shadow-strong)] relative"
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
-                    transition={{ duration: 1.2, ease: ease: [0.175, 0.885, 0.32, 1.275] }}
+                    transition={{ duration: 1.2, ease: [0.175, 0.885, 0.32, 1.275] }}
                   >
                     <ChefHat className="w-16 h-16 text-white" />
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent" />
