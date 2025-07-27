@@ -519,7 +519,7 @@ const StaffUI: React.FC = () => {
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-xl flex items-center justify-center">
-              <span className="voya-brand text-white text-sm">V</span>
+              <ChefHat className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="font-bold text-gray-900">{selectedBranch?.name}</h1>

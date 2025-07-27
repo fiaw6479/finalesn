@@ -192,10 +192,10 @@ const LoginPage: React.FC = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[#1E2A78] to-[#3B4B9A] rounded-2xl mb-4 shadow-lg">
-            <span className="voya-brand text-white text-2xl">V</span>
+            <ChefHat className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-[#1E2A78] to-[#3B4B9A] bg-clip-text text-transparent">
-            VOYA
+            TableLoyalty
           </h1>
           <p className="text-gray-600 mt-2">
             {isSignUp ? 'Create your restaurant dashboard' : 'Sign in to your restaurant dashboard'}

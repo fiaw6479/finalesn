@@ -4,7 +4,6 @@
 
 /* Import modern fonts */
 @import url('https://fonts.googleapis.com/css2?family=Satoshi:wght@300;400;500;600;700;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=General+Sans:wght@300;400;500;600;700&display=swap');
 
 /* Modern CSS Variables */
@@ -24,13 +23,6 @@
   --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow-medium: 0 16px 64px rgba(0, 0, 0, 0.12);
   --shadow-strong: 0 24px 96px rgba(0, 0, 0, 0.16);
-}
-
-/* VOYA Brand Font */
-.voya-brand {
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.02em;
 }
 
 /* Base styles with modern font */
