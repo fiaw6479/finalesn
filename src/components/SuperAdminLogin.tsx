@@ -46,7 +46,7 @@ const SuperAdminLogin: React.FC = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-red-500 to-red-700 rounded-3xl mb-4 shadow-2xl">
-            <ChefHat className="h-10 w-10 text-white" />
+            <span className="voya-brand text-white text-3xl">V</span>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent">
             Super Admin
