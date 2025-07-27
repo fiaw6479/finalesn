@@ -220,20 +220,20 @@ const DashboardLayout: React.FC = () => {
             <>
               <div className="p-1 rounded-lg bg-white/20 relative">
                 {isPro ? (
-                  <span className="voya-brand text-white text-xl">V</span>
+                  <ChefHat className="h-8 w-8 text-amber-500" />
                 ) : (
-                  <span className="voya-brand text-white text-xl">V</span>
+                  <ChefHat className="h-8 w-8 text-white" />
                 )}
               </div>
-              <span className="voya-brand text-xl text-white">VOYA</span>
+              <span className="text-xl font-bold text-white">TableLoyalty</span>
             </>
           )}
           {!isSidebarOpen && (
             <div className="p-1 rounded-lg bg-white/20 relative">
               {isPro ? (
-                <span className="voya-brand text-white text-xl">V</span>
+                <ChefHat className="h-8 w-8 text-amber-500" />
               ) : (
-                <span className="voya-brand text-white text-xl">V</span>
+                <ChefHat className="h-8 w-8 text-white" />
               )}
             </div>
           )}
